@@ -3,14 +3,22 @@
 // node it grows from, which may sit on another path. What you have learned
 // is kept in the browser (localStorage). Open it from the menu or with K.
 const SAVE = 'nomad_skills';
-const GRANTED = 4;       // skill points in all, so far
+const GRANTED = 6;       // skill points in all, so far
 
+// each path is `cols` grid columns wide; a skill's `col` is its place inside its path (0.5: centred over two)
 export const PATHS = {
-  strength: { name: 'Strength', col: 0 },
-  lightning: { name: 'Lightning', col: 1 },
+  strength: { name: 'Strength', cols: 1 },
+  lightning: { name: 'Lightning', cols: 2 },
+  earth: { name: 'Earth', cols: 1 },
 };
 
 const ICONS = {
+  // a blade standing in cracked ground, stones in the air round it
+  earth: '<svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M24 4v26M19 10h10"/><path d="M6 36h36M24 36l-5 7M24 36l6 6M14 36l-4 5M34 36l5 4"/><path d="M9 20l4-3 3 3-3 3zM35 16l4-2 2 4-4 2z"/></g></svg>',
+  // a wall of piled stones
+  wall: '<svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round">' +
+    '<path d="M6 42V18l6-6 8 3 8-5 8 4 6 4v24z"/><path d="M6 30h36M15 30v12M27 30v12M21 18v12M33 18v12" stroke-linecap="round"/><path d="M2 44h44" stroke-linecap="round"/></g></svg>',
   // a figure caught mid-blink between two streaks
   // a figure above a ring of shock on the ground
   // a figure low on all fours with a bolt along its back
@@ -28,13 +36,19 @@ const ICONS = {
 
 export const SKILLS = [
   { id: 'skyslam', name: 'Sky Slam', path: 'strength', cost: 1, requires: null, row: 0, icon: ICONS.skyslam,
-    desc: 'Press jump again in the air to leap much higher. At the top, click to plunge: the landing is a shockwave that hurts everything around you and tears up the grass.' },
-  { id: 'flash', name: 'Flash Roll', path: 'lightning', cost: 1, requires: null, row: 0, icon: ICONS.flash,
-    desc: 'Tap the roll twice, fast (C or right-click). Instead of rolling you vanish in a flash of black lines and appear where the roll would have ended.' },
-  { id: 'storm', name: 'Storm Call', path: 'lightning', cost: 1, requires: 'skyslam', row: 1, icon: ICONS.storm,
+    desc: 'Press jump again in the air to leap much higher. At the top, click to plunge: the landing is a shockwave that hurts everything around you and tears up the grass. Under Earth Power the landing raises a ring of stone that traps you in with whoever is near for six seconds.' },
+  // lightning: everything grows out of the charged blade
+  { id: 'storm', name: 'Storm Call', path: 'lightning', cost: 1, requires: null, row: 0, col: 0.5, icon: ICONS.storm,
     desc: 'Press R. Hold the blade straight up and call down lightning onto it. For forty-five seconds the sword crackles: it hits harder, stuns what it hits and singes the leaves. Once it fades the sky needs ten seconds before it will answer again.' },
-  { id: 'tackle', name: 'Electrical Tackle', path: 'lightning', cost: 1, requires: 'storm', row: 2, icon: ICONS.tackle,
+  { id: 'flash', name: 'Flash Roll', path: 'lightning', cost: 1, requires: 'storm', row: 1, col: 0, icon: ICONS.flash,
+    desc: 'Tap the roll twice, fast (C or right-click). Instead of rolling you vanish in a flash of black lines and appear where the roll would have ended.' },
+  { id: 'tackle', name: 'Electrical Tackle', path: 'lightning', cost: 1, requires: 'storm', row: 1, col: 1, icon: ICONS.tackle,
     desc: 'Press T while the storm is on your blade. He drops to all fours and a great cat of lightning forms around him, then the cat pounces: eight metres in a flash, straight at whatever is ahead, and rears up to rake it with both paws. The ground behind is burnt and whatever it catches is stunned.' },
+  // earth
+  { id: 'earth', name: 'Earth Power', path: 'earth', cost: 1, requires: null, row: 0, icon: ICONS.earth,
+    desc: 'Press G. Drive the blade into the ground and the earth answers: stones rise and circle you. For forty seconds you take half damage, your blows throw things back, and Sky Slam raises a ring of stone. Ten seconds to recover after it fades.' },
+  { id: 'wall', name: 'Earth Wall', path: 'earth', cost: 1, requires: 'earth', row: 1, icon: ICONS.wall,
+    desc: 'Press Q while Earth Power is on you. A wall of rock tears up out of the ground in front of you: arrows shatter on it, nothing walks through it, and a dash into it ends with whoever dashed stunned on the ground.' },
 ];
 
 export class Skills {
@@ -44,6 +58,11 @@ export class Skills {
       const s = JSON.parse(localStorage.getItem(SAVE) || 'null');
       if (s && Array.isArray(s.learned)) for (const id of s.learned) if (SKILLS.some((k) => k.id === id)) this.learned.add(id);
     } catch { /* private mode: start fresh */ }
+    // the tree has changed shape over time: a skill whose root is no longer learned is given back
+    for (let again = true; again;) {
+      again = false;
+      for (const id of this.learned) { const sk = SKILLS.find((k) => k.id === id); if (sk.requires && !this.learned.has(sk.requires)) { this.learned.delete(id); again = true; } }
+    }
     this.root = document.getElementById('skills');
     this.tree = document.getElementById('sk-tree');
     this.info = document.getElementById('sk-points');
@@ -74,18 +93,20 @@ export class Skills {
 
   render() {
     this.info.textContent = this.points + (this.points === 1 ? ' skill point' : ' skill points');
-    const paths = Object.entries(PATHS), cols = paths.length;
-    this.tree.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 260px))`;
+    const paths = Object.entries(PATHS);
+    // two grid tracks per column, so a node can sit centred over two columns
+    let at = 0; for (const [, p] of paths) { p.at = at; at += p.cols; }
+    this.tree.style.gridTemplateColumns = `repeat(${at * 2}, minmax(0, 110px))`;
     this.tree.textContent = '';
     // a heading for each path, then its skills (row 0 is the heading)
     for (const [id, p] of paths) {
       const h = document.createElement('div');
-      h.className = 'sk-path ' + id; h.textContent = p.name; h.style.gridColumn = p.col + 1; h.style.gridRow = 1;
+      h.className = 'sk-path ' + id; h.textContent = p.name; h.style.gridColumn = `${p.at * 2 + 1} / span ${p.cols * 2}`; h.style.gridRow = 1;
       this.tree.appendChild(h);
     }
     // a place held for what the Strength path will grow into
     const soon = document.createElement('div');
-    soon.className = 'sk-node soon'; soon.textContent = 'More to come'; soon.style.gridColumn = PATHS.strength.col + 1; soon.style.gridRow = 3;
+    soon.className = 'sk-node soon'; soon.textContent = 'More to come'; soon.style.gridColumn = `${PATHS.strength.at * 2 + 1} / span 2`; soon.style.gridRow = 3;
     this.tree.appendChild(soon);
     const nodes = {};
     for (const sk of SKILLS) {
@@ -93,7 +114,7 @@ export class Skills {
       const n = document.createElement('button');
       nodes[sk.id] = n;
       n.className = 'sk-node ' + sk.path + ' ' + state;
-      n.style.gridColumn = PATHS[sk.path].col + 1; n.style.gridRow = sk.row + 2;
+      n.style.gridColumn = `${(PATHS[sk.path].at + (sk.col || 0)) * 2 + 1} / span 2`; n.style.gridRow = sk.row + 2;
       n.disabled = state !== 'ready';
       n.innerHTML = `<span class="sk-icon">${sk.icon}</span><span class="sk-body"><b>${sk.name}</b><i>${sk.desc}</i>` +
         `<em>${state === 'learned' ? 'Learned' : state === 'ready' ? `Learn · ${sk.cost} point` : sk.requires && !this.has(sk.requires) ? 'Needs ' + SKILLS.find((k) => k.id === sk.requires).name : `Needs ${sk.cost} point`}</em></span>`;

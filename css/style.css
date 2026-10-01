@@ -77,16 +77,26 @@ input[type=range] { accent-color: var(--gold); width: 150px; }
 .mbtn kbd { float: right; margin-top: 7px; font: 12px var(--sans); letter-spacing: 0.1em; color: var(--ink-dim); border: 1px solid rgba(244,237,225,0.3); padding: 1px 7px; }
 .menu-controls .dim { color: var(--ink-dim); }
 #skills { position: fixed; inset: 0; z-index: 25; display: grid; place-items: center; background: rgba(6,5,4,0.62); }
-.sk-card { width: min(640px, 92vw); max-height: 88vh; overflow: auto; padding: 26px 30px 20px; background: rgba(18,16,14,0.94); border: 1px solid rgba(232,194,122,0.45); }
+.sk-card { width: min(1040px, 94vw); max-height: 88vh; overflow: auto; padding: 26px 30px 20px; background: rgba(18,16,14,0.94); border: 1px solid rgba(232,194,122,0.45); }
 .sk-head { display: flex; align-items: baseline; gap: 18px; }
 .sk-head h2 { margin: 0; font-family: var(--serif); font-weight: 500; font-size: 38px; letter-spacing: 0.2em; }
 #sk-points { color: var(--gold); font-family: var(--serif); font-style: italic; font-size: 19px; }
 .sk-x { margin-left: auto; background: none; border: 0; color: var(--ink-dim); font-size: 30px; line-height: 1; padding: 0 4px; }
 .sk-x:hover { color: var(--ink); }
-#sk-tree { position: relative; display: grid; gap: 34px 20px; justify-content: center; padding: 22px 0 22px; }
+#sk-tree { position: relative; display: grid; gap: 34px 10px; justify-content: center; padding: 22px 0 22px; }
 .sk-path { font-family: var(--serif); font-size: 15px; letter-spacing: 0.34em; text-transform: uppercase; padding-bottom: 8px; border-bottom: 1px solid currentColor; align-self: end; }
 .sk-path.strength { color: #d9a066; }
 .sk-path.lightning { color: #9cc2ff; }
+.sk-path.earth { color: #b7c27a; }
+.sk-node.earth.ready, .sk-node.earth.learned { border-color: #b7c27a; }
+.sk-node.earth.learned { background: rgba(170,180,100,0.1); }
+.sk-node.earth.ready:hover, .sk-node.earth.ready:focus-visible { background: rgba(170,180,100,0.16); }
+.sk-node.earth .sk-icon { color: #b7c27a; border-color: rgba(183,194,122,0.55); }
+.sk-node.earth .sk-body em { color: #b7c27a; }
+.sk-node.locked.earth .sk-body em { color: var(--ink-dim); }
+/* nodes are narrow with four columns: the icon goes above the text */
+#sk-tree .sk-node:not(.soon) { flex-direction: column; gap: 10px; }
+#sk-tree .sk-body b { font-size: 21px; }
 .sk-links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 0; }
 .sk-links path { fill: none; stroke: rgba(244,237,225,0.3); stroke-width: 1.5; }
 .sk-links path.on { stroke: var(--gold); }
@@ -147,5 +157,10 @@ input[type=range] { accent-color: var(--gold); width: 150px; }
 #storm { position: fixed; left: 28px; bottom: 44px; width: 200px; height: 4px; z-index: 11; pointer-events: none; background: rgba(0,0,0,0.4); border: 1px solid rgba(160,196,255,0.4); opacity: 0; transition: opacity 0.3s; }
 #storm.on { opacity: 0.95; }
 #storm.cool #storm-fill { background: #5d6f94; box-shadow: none; }
+#earth { position: fixed; left: 28px; bottom: 56px; width: 200px; height: 4px; z-index: 11; pointer-events: none; background: rgba(0,0,0,0.4); border: 1px solid rgba(190,200,130,0.4); opacity: 0; transition: opacity 0.3s; }
+#earth.on { opacity: 0.95; }
+#earth-fill { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #8a7a4a, #d6d39a); box-shadow: 0 0 6px #a4a060; }
+#earth.cool #earth-fill { background: #6b6550; box-shadow: none; }
+#callout.earth { color: #d2d49a; text-shadow: 0 0 22px #6e6a2a, 0 2px 0 #000; }
 #storm-fill { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #6aa0ff, #e4efff); box-shadow: 0 0 8px #6aa0ff; }
 #hp.low #hp-fill { background: #d9604a; }

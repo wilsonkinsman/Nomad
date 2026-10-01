@@ -90,6 +90,16 @@ export const MOVE_KEYS = {
     [1.7, { grip: R(1), sp: R(0, 0.24, 0.2), sa: R(0, 0.6, 0), spine: R(0.0), chest: R(-0.08), hips: R(0.0), neck: R(0.05), stance: [0.1, -0.2, 0.04] }],
     [2.2, READY],
   ],
+  // Earth Power: the blade comes up point down over the ground in front of him, then both hands drive it in;
+  // he stays crouched over it while the ground answers, then pulls it out to the ready pose
+  quake: [
+    [0.00, READY],
+    [0.28, { grip: R(1), sp: R(0, 0.3, 0.2), sa: R(0, 2.9, 0), spine: R(-0.1), chest: R(-0.15), hips: R(0.0), neck: R(0.05), stance: [0.15, -0.2, 0.03] }],
+    [0.44, { grip: R(1), sp: R(0, -0.02, 0.3), sa: R(0, 2.98, 0), spine: R(0.4), chest: R(0.45), hips: R(0.16), neck: R(-0.35), head: R(-0.1), stance: [0.38, -0.32, 0.24] }],
+    [0.95, { grip: R(1), sp: R(0, 0.0, 0.3), sa: R(0, 2.98, 0), spine: R(0.38), chest: R(0.42), hips: R(0.15), neck: R(-0.32), head: R(-0.1), stance: [0.38, -0.32, 0.23] }],
+    [1.2, { grip: R(1), sp: R(0, 0.1, 0.24), sa: R(0, 2.2, 0), spine: R(0.15), chest: R(0.15), hips: R(0.06), stance: [0.2, -0.22, 0.1] }],
+    [1.55, READY],
+  ],
   // return the blade to the sheath over the left shoulder: both hands carry it out to his left and round
   // behind the shoulder (the sword's path, in the chest's frame, ends exactly where the arm-keyed pose
   // below begins), then the right hand lets go and the left slides the blade home

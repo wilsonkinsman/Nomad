@@ -187,6 +187,13 @@ export class Bow {
         const cy = groundY(c.x, c.z);
         if (Math.hypot(a.pos.x - c.x, a.pos.z - c.z) < c.r && a.pos.y > cy && a.pos.y < cy + (c.y1 || 1.9)) { this.hit(a, c, a.pos.y - cy); return true; }
       }
+      // an Earth Wall: the arrow shatters on the stone
+      const wall = G.earth?.blockArrow(a.pos);
+      if (wall) {
+        G.scene.remove(a.mesh); G.audio?.bow('stick'); wall.jolt(a.pos.x, a.pos.y, a.pos.z);
+        for (let k = 0; k < 8; k++) G.particles.emit('spark', a.pos.x, a.pos.y, a.pos.z, -a.vel.x * 0.05 + (Math.random() - 0.5) * 3, Math.random() * 2, -a.vel.z * 0.05 + (Math.random() - 0.5) * 3, 0.3, 1);
+        return false;
+      }
       // trees, rocks, posts
       for (const L of [G.trees?.colliders, G.props?.colliders]) if (L) for (const c of L) {
         const dx = a.pos.x - c.x, dz = a.pos.z - c.z;

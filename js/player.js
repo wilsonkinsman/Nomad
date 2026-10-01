@@ -76,6 +76,8 @@ export class Player {
   hurt(amount, from) {
     const g = this.game;
     if (this.state === 'dive' || this.state === 'roll' || this.state === 'flash' || this.state === 'tackle' || this.invuln > 0) return 'dodged';
+    // the earth takes half of every blow while it is with him
+    if (g.earth && g.earth.active) { amount = Math.ceil(amount / 2); for (let i = 0; i < 10; i++) g.particles.emit('dust', this.pos.x, this.pos.y + 1.1, this.pos.z, (Math.random() - 0.5) * 3, Math.random() * 2, (Math.random() - 0.5) * 3, 0.5, 1); }
     this.hp = Math.max(0, this.hp - amount); this.regenDelay = 5; this.invuln = 0.6;
     g.hud?.hurtFlash(); g.hud?.callout('HIT', 'red');
     g.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 1.7, this.pos.z), '-' + amount, 'red');
@@ -175,6 +177,8 @@ export class Player {
     }
     // Electrical Tackle: all fours, wrapped in the storm
     if (!inMenu && this.state === 'ground' && input.tackleKey()) g.tackle?.trigger(this);
+    // Earth Wall
+    if (!inMenu && this.state === 'ground' && input.wallKey()) g.earth?.raiseWall(this);
     if (!inMenu && this.state === 'ground') {
       if (input.jump() && this.coyote > 0 && !(W && W.busy)) {
         this.vel.y = 4.5 - 1.2 * deep;
@@ -224,7 +228,7 @@ export class Player {
       this.setState('ground');
       this.emit('rollEnd', this.pos.clone(), this.heading, Math.hypot(this.vel.x, this.vel.z));
     }
-    if (this.state === 'flop' && this.stateT > 0.55) this.setState('getup');
+    if (this.state === 'flop' && this.stateT > (this.flopTime || 0.55)) { this.flopTime = 0; this.setState('getup'); }
     if (this.state === 'getup' && this.stateT > this.getupTime) {
       this.setState('ground');
       this.emit('rollEnd', this.pos.clone(), this.heading, 1.5);

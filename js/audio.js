@@ -182,6 +182,18 @@ export class Audio {
     } finally { this.bus = null; }
   }
 
+  // the earth: the blade going in and the ground answering, a wall tearing up, stone crumbling
+  earth(kind) {
+    if (!this.ctx) return;
+    this.bus = this.swordBus;
+    try {
+      const t = this.ctx.currentTime + 0.005;
+      if (kind === 'quake') { this.thump(t, 55, 0.9, 0.9); this.thump(t + 0.05, 38, 1.2, 0.7); this.grain(t, 300, 0.7, 1.1, 0.5, 'lowpass'); this.grain(t, 1400, 1, 0.25, 0.25); }
+      else if (kind === 'wall') { this.sweep(t, 120, 380, 160, 2, 0.45, 0.5); this.grain(t, 500, 0.8, 0.5, 0.45, 'lowpass'); this.thump(t + 0.22, 70, 0.4, 0.6); }
+      else if (kind === 'crumble') { for (let i = 0; i < 6; i++) this.grain(t + i * 0.06 + Math.random() * 0.04, 600 + Math.random() * 1500, 1.5, 0.12, 0.18); this.grain(t, 250, 0.7, 0.6, 0.25, 'lowpass'); }
+    } finally { this.bus = null; }
+  }
+
   // the Sky Slam landing: the ground booms
   slam() {
     if (!this.ctx) return;

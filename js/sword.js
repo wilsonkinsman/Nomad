@@ -36,7 +36,11 @@ export const MOVES = {
   slamland: { dur: 0.6, hit: null, chain: 0.3, cancel: null, next: null },
   // Storm Call: the blade held straight up while the sky gathers; the bolt lands on it at STORM_STRIKE
   storm:    { dur: 2.2, swap: 0.08, hit: null, chain: 1.5, cancel: 1.95, next: 'overhead' },
+  // Earth Power: the blade raised point down and driven into the ground; the earth answers at QUAKE_AT
+  quake:    { dur: 1.55, swap: 0.08, hit: null, chain: 1.0, cancel: 1.25, next: 'overhead' },
 };
+const QUAKE_AT = 0.44;
+const KNOCK = 1.1;        // how far a blow throws things while the earth is with him
 const STORM_GATHER = 0.5, STORM_STRIKE = 1.25;
 const CHARGED = 1.5;      // what a blow does while the blade holds the storm
 const SLAM_RADIUS = 4.8;
@@ -255,12 +259,20 @@ export class Weapon {
   // R: hold the blade straight up and call the lightning down onto it (a skill that grows from Sky Slam)
   storm() {
     const P = this.player, G = this.game, S = G.skills;
-    if (!S || !S.has('storm') || !S.has('skyslam')) { G.hud?.hint('Learn Storm Call in the skill tree (K), under Sky Slam', 3); return; }
+    if (!S || !S.has('storm')) { G.hud?.hint('Learn Storm Call in the skill tree (K)', 3); return; }
     if (!P.grounded || P.state !== 'ground' || G.bow?.equipped || this.kind === 'storm') return;
     if (G.storm && G.storm.charged) { G.hud?.hint('The storm is already on the blade', 1.5); return; }
     if (G.storm && G.storm.cool > 0) { G.hud?.hint('The sky is still settling: ' + Math.ceil(G.storm.cool) + ' s', 1.5); return; }
     if (this.kind && !this.waitingOn && !(MOVES[this.kind].cancel != null && this.t >= MOVES[this.kind].cancel)) return;
     this.begin('storm');
+  }
+  // G: drive the blade into the ground and call up the earth (a skill on the Earth path)
+  earthCall() {
+    const P = this.player, G = this.game, S = G.skills;
+    if (!S || !S.has('earth')) { G.hud?.hint('Learn Earth Power in the skill tree (K)', 3); return; }
+    if (!P.grounded || P.state !== 'ground' || G.bow?.equipped || this.kind === 'quake' || !G.earth || !G.earth.ready(G)) return;
+    if (this.kind && !this.waitingOn && !(MOVES[this.kind].cancel != null && this.t >= MOVES[this.kind].cancel)) return;
+    this.begin('quake');
   }
   // the blade is up and a blow lands: turn it aside
   get parrying() { return this.kind === 'parry' && this.t >= PARRY_WINDOW[0] && this.t <= PARRY_WINDOW[1]; }
@@ -279,8 +291,8 @@ export class Weapon {
 
   begin(kind) {
     const P = this.player, G = this.game, M = MOVES[kind];
-    this.glinted = false; this.plungeReq = 0; this.apexCue = false; this.gathered = false; this.bolted = false;
-    this.kind = kind; this.lastKind = kind; this.t = 0; this.swapped = (kind === 'parry' || kind === 'rise' || kind === 'storm') && this.rig.drawn || kind === 'plunge' || kind === 'slamland'; this.queued = null;
+    this.glinted = false; this.plungeReq = 0; this.apexCue = false; this.gathered = false; this.bolted = false; this.quaked = false;
+    this.kind = kind; this.lastKind = kind; this.t = 0; this.swapped = (kind === 'parry' || kind === 'rise' || kind === 'storm' || kind === 'quake') && this.rig.drawn || kind === 'plunge' || kind === 'slamland'; this.queued = null;
     this.waitingOn = false; this.waiting = 0; this.struck.clear(); this.lunged = false; this.swished = false; this.landed = false; this.prevS = 0;
     // face where the camera looks
     const b = G.rig.basis();
@@ -339,12 +351,12 @@ export class Weapon {
     G.trample.stamp(px, pz, R * 1.1, 1, 0, 0, 1);
     for (let a = 0; a < 6.28; a += 0.5) G.cut.stamp(px + Math.cos(a) * R * 0.8, pz + Math.sin(a) * R * 0.8, R * 0.45, 1);
     // everything hurt in reach, hardest at the middle
-    const charged = !!(G.storm && G.storm.charged);
+    const charged = !!(G.storm && G.storm.charged), earthy = !!(G.earth && G.earth.active);
     for (const c of G.enemies?.targets || []) {
       if (c.dead) continue;
       const d = Math.hypot(c.x - px, c.z - pz);
       if (d < R + c.r) {
-        c.onHit?.('slam', Math.round(lerp(48, 22, clamp(d / R, 0, 1)) * (charged ? CHARGED : 1)), c.x - px, c.z - pz, charged ? { zap: true, stun: STUN } : null);
+        c.onHit?.('slam', Math.round(lerp(48, 22, clamp(d / R, 0, 1)) * (charged ? CHARGED : 1)), c.x - px, c.z - pz, this.fx(charged, earthy));
         if (charged) G.storm.zap(new THREE.Vector3(px, py + 0.3, pz), new THREE.Vector3(c.x, groundY(c.x, c.z) + 1.2, c.z));
       }
     }
@@ -361,7 +373,8 @@ export class Weapon {
     for (let i = 0; i < 46; i++) { const a = Math.random() * Math.PI * 2, r = Math.random() * R * 0.8; pz2.emit(surf.wheat > 0.35 ? 'chaff' : 'clip', px + Math.cos(a) * r, py + 0.2, pz + Math.sin(a) * r, Math.cos(a) * 3, 3 + Math.random() * 4, Math.sin(a) * 3, 1.5, 1); }
     this.waves.push({ x: px, y: py + 0.05, z: pz, t: 0 });
     G.audio?.slam(); G.rig.shake = 1; G.hitStop = Math.max(G.hitStop, 0.12);
-    G.hud?.callout(charged ? 'STORM SLAM' : 'SKY SLAM', charged ? 'blue' : 'gold');
+    if (earthy) G.earth.cage(px, pz);      // the earth answers the slam with a ring of stone
+    else G.hud?.callout(charged ? 'STORM SLAM' : 'SKY SLAM', charged ? 'blue' : 'gold');
     this.begin('slamland'); this.w = 1;
   }
 
@@ -376,6 +389,7 @@ export class Weapon {
     if (input.attack()) this.press();
     if (input.parry()) this.parry();
     if (input.stormKey()) this.storm();
+    if (input.earthKey()) this.earthCall();
     if (this.kind === 'rise' || this.kind === 'plunge') { this.airTick(dt); return; }
     // the legs take the sword stance only while he is not walking; blended, never switched
     this.legs = damp(this.legs, input.move().mag > 0.2 ? 0 : 1, 9, dt);
@@ -398,6 +412,7 @@ export class Weapon {
       if (!this.glinted && this.t >= PARRY_WINDOW[0]) { this.glinted = true; this.rig.glint(1); G.audio?.sword('parry'); }
       if (this.t >= M.dur - 0.01) this.parryCool = PARRY_COOLDOWN;
     }
+    if (this.kind === 'quake') this.moveScale = 0.1;
     if (this.kind === 'storm') {
       this.moveScale = 0.1;
       if (!this.gathered && this.t >= STORM_GATHER) { this.gathered = true; G.audio?.storm('gather'); }
@@ -459,6 +474,7 @@ export class Weapon {
     this.rig.updateGlint(dt, this.game.camera);
     this.rig.applyCharge(this.game.time);
     if (this.kind === 'storm' && !this.freeze && dt > 0) this.stormTick();
+    if (this.kind === 'quake' && !this.freeze && dt > 0 && !this.quaked && this.t >= QUAKE_AT) { this.quaked = true; this.game.earth?.quake(this.rig.point(1, new THREE.Vector3()), this.player); }
     this.updateWaves(dt);
     if (M && M.hit && dt > 0 && !this.freeze) {
       const s = clamp((this.t - M.hit[0]) / (M.hit[1] - M.hit[0]), 0, 1);
@@ -661,6 +677,12 @@ export class Weapon {
     for (let i = 0; i < 14; i++) pz.emit('zap', x, y, z, (Math.random() - 0.5) * 5, Math.random() * 3.5, (Math.random() - 0.5) * 5, 0.8, 1);
   }
 
+  // what a blow carries besides its damage: the storm stuns, the earth throws back
+  fx(charged, earthy) {
+    if (!charged && !earthy) return null;
+    return { zap: charged, stun: charged ? STUN : 0, knock: earthy ? KNOCK : 0 };
+  }
+
   // trees, rocks, posts the volume touches (once per swing each)
   hitObjects(kind, F, test) {
     const G = this.game, list = [G.trees?.colliders, G.props?.colliders, G.enemies?.targets];
@@ -674,9 +696,10 @@ export class Weapon {
         const dist = Math.sqrt(d2);
         if (!test(c, dx, dz, dist)) continue;
         this.struck.add(c);
-        const charged = !!(G.storm && G.storm.charged);
+        const charged = !!(G.storm && G.storm.charged), earthy = !!(G.earth && G.earth.active);
         if (c.onHit) {                 // something that takes damage (the dummy, the practice enemy)
-          c.onHit(kind === 'draw' ? 'cut' : kind, Math.round((HURT[kind] ?? 15) * (charged ? CHARGED : 1)), dx, dz, charged ? { zap: true, stun: STUN } : null);
+          c.onHit(kind === 'draw' ? 'cut' : kind, Math.round((HURT[kind] ?? 15) * (charged ? CHARGED : 1)), dx, dz, this.fx(charged, earthy));
+          if (earthy) for (let i = 0; i < 10; i++) G.particles.emit('dust', c.x, groundY(c.x, c.z) + 1.0, c.z, dx * 1.5, 1 + Math.random(), dz * 1.5, 0.8, 1);
           if (charged) this.zapHit(c.x, c.z, groundY(c.x, c.z) + 1.2);
           G.audio?.sword('hit'); G.rig.shake = Math.max(G.rig.shake, 0.2); G.hitStop = Math.max(G.hitStop, 0.07);
           const hp = new THREE.Vector3(c.x, groundY(c.x, c.z) + 1.1, c.z);

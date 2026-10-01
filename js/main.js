@@ -29,6 +29,7 @@ import { Enemies, TRAINING } from './enemies.js';
 import { Bow } from './bow.js';
 import { Storm } from './storm.js';
 import { Tackle } from './tackle.js';
+import { Earth } from './earth.js';
 
 const QUALITY = {
   low:    { ratio: 0.6,  msaa: 0, shadow: 1024, veg: 0.5 },
@@ -130,8 +131,9 @@ async function boot() {
   game.bow = new Bow(game);
   game.storm = new Storm(game);
   game.tackle = new Tackle(game);
+  game.earth = new Earth(game);
   game.systems.push(game.grass, game.wheat, game.snow, game.leaves, game.props, game.particles, game.fireflies, game.hud, game.audio);
-  game.systems.push(game.flash, game.enemies, game.bow, game.storm, game.tackle);
+  game.systems.push(game.flash, game.enemies, game.bow, game.storm, game.tackle, game.earth);
   game.systems.unshift(game.contact);    // body hitboxes stamp before the snow and leaves update
   wireEvents();
   game.sky.setNight(settings.night);

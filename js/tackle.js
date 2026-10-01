@@ -76,11 +76,11 @@ export class Tackle {
       this.dir.set(dx / d, dz / d); want = Math.max(0, d - best.r - 0.75);
     }
     let d = 0;
-    this.blocked = false;
+    this.blocked = false; this.wall = null;
     for (let s = 0.25; s <= want + 1e-6; s += 0.25) {
       const x = P.pos.x + this.dir.x * s, z = P.pos.z + this.dir.y * s;
       let hard = Math.hypot(x, z) > PLAY_RADIUS - 0.5;
-      for (const c of P.colliders) { if (c.soft) continue; const dx = x - c.x, dz = z - c.z, r = c.r + 0.34; if (dx * dx + dz * dz < r * r) { hard = true; break; } }
+      for (const c of P.colliders) { if (c.soft) continue; const dx = x - c.x, dz = z - c.z, r = c.r + 0.34; if (dx * dx + dz * dz < r * r) { hard = true; if (c.wall) this.wall = c.wall; break; } }
       if (hard) { this.blocked = true; break; }
       d = s;
     }
@@ -131,6 +131,7 @@ export class Tackle {
   land(P) {
     const G = this.game, S = G.storm;
     this.landed = true;
+    if (this.wall) { this.intoWall(P); return; }
     P.vel.set(this.dir.x * 3, P.vel.y, this.dir.y * 3);         // the dash is over: what is left is a skid
     const a = this.from.clone(), b = P.pos.clone(); a.y += 0.55; b.y += 0.55;
     if (this.len > 0.5) {
@@ -144,6 +145,16 @@ export class Tackle {
     G.rig.shake = Math.max(G.rig.shake, this.blocked ? 1 : 0.55);
     if (this.blocked) { G.audio?.sword('slam'); G.hitStop = Math.max(G.hitStop, 0.08); }
     G.audio?.storm('zap');
+  }
+
+  // the dash met an Earth Wall: the stone takes it, the cat breaks apart and he is thrown down, stunned
+  intoWall(P) {
+    const G = this.game, w = this.wall;
+    const hx = P.pos.x + this.dir.x * 0.6, hz = P.pos.z + this.dir.y * 0.6, hy = P.pos.y + 0.7;
+    w.jolt(hx, hy, hz);
+    for (let i = 0; i < 40; i++) { const a = Math.random() * 6.28, s = 2 + Math.random() * 5; G.particles.emit('zap', hx, hy, hz, Math.cos(a) * s - this.dir.x * 3, Math.random() * 4, Math.sin(a) * s - this.dir.y * 3, 1, 1); }
+    G.audio?.storm('zap');
+    G.earth.daze(P, 1.7);
   }
 
   end(P) { P.setState('ground'); P.vel.multiplyScalar(0.2); }

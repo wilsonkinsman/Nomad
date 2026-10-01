@@ -215,6 +215,11 @@ class Trainee {
     // keep him near his ground; the rest of the world is not his
     const hx = this.pos.x - this.home.x, hz = this.pos.z - this.home.y, hl = Math.hypot(hx, hz);
     if (hl > 16) { this.pos.x = this.home.x + hx / hl * 16; this.pos.z = this.home.y + hz / hl * 16; }
+    // stone walls hold him in (or out)
+    for (const c of G.earth ? G.earth.circles() : []) {
+      const ex = this.pos.x - c.x, ez = this.pos.z - c.z, r = c.r + 0.42, d2 = ex * ex + ez * ez;
+      if (d2 < r * r && d2 > 1e-8) { const d = Math.sqrt(d2); this.pos.x += ex / d * (r - d); this.pos.z += ez / d * (r - d); }
+    }
     // keep out of the player
     if (this.state !== 'dead' && dist < 0.8) { this.pos.x -= dx / Math.max(dist, 1e-3) * (0.8 - dist); this.pos.z -= dz / Math.max(dist, 1e-3) * (0.8 - dist); }
     this.pos.y = groundY(this.pos.x, this.pos.z);
