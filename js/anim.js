@@ -6,6 +6,7 @@
 import { BONES, LEG } from './nomad.js';
 import { clamp, lerp, smoothstep, damp } from './util.js';
 import { evalMove } from './swordmoves.js';
+import { DOWN, RUN, TOTAL } from './tackle.js';
 
 const TAU = Math.PI * 2;
 
@@ -334,6 +335,26 @@ export class Animator {
       set('upperarm_L', -2.5, 0, 0.5); set('upperarm_R', -2.5, 0, -0.5);
       set('forearm_L', -0.5); set('forearm_R', -0.5);
       set('thigh_L', 0.1, 0, 0.12); set('thigh_R', 0.15, 0, -0.12); set('shin_L', 0.3); set('shin_R', 0.2); set('foot_L', 0.6); set('foot_R', 0.6);
+    } else if (P.state === 'tackle') {
+      // all fours: the body tipped well forward and low, hands planted, knees tucked under, and a bound
+      // (hands and feet go together, the spine flexing) once he is running
+      target = 1;
+      const dn = smoothstep(0, DOWN, t) * (1 - smoothstep(DOWN + RUN, TOTAL, t));
+      const rn = smoothstep(DOWN * 0.6, DOWN + 0.2, t) * (1 - smoothstep(DOWN + RUN - 0.1, DOWN + RUN + 0.1, t));
+      const ph = this.t * 12, s1 = Math.sin(ph), s2 = Math.sin(ph - 1.6);
+      O.pitch = 1.12 * dn; O.pivotY = lerp(0.95, 0.46, dn);
+      set('spine', 0.12 * dn + 0.14 * rn * s1); set('chest', 0.1 * dn + 0.1 * rn * s1);
+      set('neck', -1.05 * dn); set('head', -0.6 * dn);
+      for (const [side, sg] of [['L', 1], ['R', -1]]) {
+        set('shoulder_' + side, 0, 0, sg * 0.05 * dn);
+        set('upperarm_' + side, -1.12 * dn - 0.5 * rn * s2, 0, sg * 0.1 * dn);
+        set('forearm_' + side, -0.15 * dn - 0.3 * rn * Math.max(0, s2));
+        set('hand_' + side, 0.5 * dn);
+        set('thigh_' + side, -1.6 * dn - 0.35 * rn * s1, 0, sg * 0.1 * dn);
+        set('shin_' + side, 2.1 * dn + 0.3 * rn * s1);
+        set('foot_' + side, -0.3 * dn);
+      }
+      O.hipsY = -0.02 * dn;
     } else if (P.state === 'getup') {
       const u = clamp(t / P.getupTime, 0, 1), e = u * u * (3 - 2 * u);
       target = 1 - smoothstep(0.8, 1, u);

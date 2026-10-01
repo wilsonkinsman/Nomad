@@ -257,6 +257,8 @@ export class Weapon {
     const P = this.player, G = this.game, S = G.skills;
     if (!S || !S.has('storm') || !S.has('skyslam')) { G.hud?.hint('Learn Storm Call in the skill tree (K), under Sky Slam', 3); return; }
     if (!P.grounded || P.state !== 'ground' || G.bow?.equipped || this.kind === 'storm') return;
+    if (G.storm && G.storm.charged) { G.hud?.hint('The storm is already on the blade', 1.5); return; }
+    if (G.storm && G.storm.cool > 0) { G.hud?.hint('The sky is still settling: ' + Math.ceil(G.storm.cool) + ' s', 1.5); return; }
     if (this.kind && !this.waitingOn && !(MOVES[this.kind].cancel != null && this.t >= MOVES[this.kind].cancel)) return;
     this.begin('storm');
   }
@@ -368,7 +370,7 @@ export class Weapon {
     const P = this.player, G = this.game, input = G.input;
     if (this.freeze) { P.vel.set(0, 0, 0); this.moveScale = 0; this.faceLock = true; return; }
     if (inMenu) { if (this.kind) this.reset(); return; }
-    if (P.state === 'dive' || P.state === 'roll' || P.state === 'flop' || P.state === 'getup' || P.state === 'flash') { if (this.kind) this.reset(); this.w = 0; return; }
+    if (P.state === 'dive' || P.state === 'roll' || P.state === 'flop' || P.state === 'getup' || P.state === 'flash' || P.state === 'tackle') { if (this.kind) this.reset(); this.w = 0; return; }
     if (G.bow?.equipped) { if (this.kind) this.reset(); this.w = 0; return; }
     this.parryCool = Math.max(0, this.parryCool - dt);
     if (input.attack()) this.press();

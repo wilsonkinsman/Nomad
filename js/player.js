@@ -75,7 +75,7 @@ export class Player {
   // a blow lands on him. Returns 'dodged' if he was rolling or flashing through it, else 'hit'.
   hurt(amount, from) {
     const g = this.game;
-    if (this.state === 'dive' || this.state === 'roll' || this.state === 'flash' || this.invuln > 0) return 'dodged';
+    if (this.state === 'dive' || this.state === 'roll' || this.state === 'flash' || this.state === 'tackle' || this.invuln > 0) return 'dodged';
     this.hp = Math.max(0, this.hp - amount); this.regenDelay = 5; this.invuln = 0.6;
     g.hud?.hurtFlash(); g.hud?.callout('HIT', 'red');
     g.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 1.7, this.pos.z), '-' + amount, 'red');
@@ -105,7 +105,7 @@ export class Player {
 
     // ---------------------------------------------------------------- intent
     let mx = 0, mz = 0, mag = 0;
-    const busy = this.state === 'dive' || this.state === 'roll' || this.state === 'flop' || this.state === 'getup' || this.state === 'flash';
+    const busy = this.state === 'dive' || this.state === 'roll' || this.state === 'flop' || this.state === 'getup' || this.state === 'flash' || this.state === 'tackle';
     if (!inMenu && !busy) {
       const m = input.move(), b = g.rig.basis();
       mx = b.fx * m.y + b.rx * m.x; mz = b.fz * m.y + b.rz * m.x;
@@ -147,6 +147,8 @@ export class Player {
       this.vel.x *= Math.exp(-10 * dt); this.vel.z *= Math.exp(-10 * dt);
     } else if (this.state === 'flash') {
       this.vel.x = this.vel.z = 0;
+    } else if (this.state === 'tackle') {
+      g.tackle.drive(this, dt);
     }
     const sp = Math.hypot(this.vel.x, this.vel.z);
     // heading follows travel direction, slower at speed (momentum)
@@ -171,6 +173,8 @@ export class Player {
       this.emit('jump', this.pos.clone(), S);
       for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; g.particles.emit('dust', this.pos.x + Math.cos(a) * 0.3, this.pos.y + 0.2, this.pos.z + Math.sin(a) * 0.3, Math.cos(a) * 2.5, 0.3, Math.sin(a) * 2.5, 0.6, 1); }
     }
+    // Electrical Tackle: all fours, wrapped in the storm
+    if (!inMenu && this.state === 'ground' && input.tackleKey()) g.tackle?.trigger(this);
     if (!inMenu && this.state === 'ground') {
       if (input.jump() && this.coyote > 0 && !(W && W.busy)) {
         this.vel.y = 4.5 - 1.2 * deep;
@@ -233,6 +237,7 @@ export class Player {
 
   collide() {
     for (const c of this.colliders) {
+      if (c.soft && this.state === 'tackle') continue;        // he runs through what the storm can knock about
       const dx = this.pos.x - c.x, dz = this.pos.z - c.z, r = c.r + 0.28;
       const d2 = dx * dx + dz * dz;
       if (d2 < r * r && d2 > 1e-8) {
@@ -269,7 +274,7 @@ export class Player {
     // wind felt by the cloth: world wind plus the air we run through
     const w = this.game.wind ? this.game.wind.at(this.pos.x, this.pos.z) : new THREE.Vector3();
     this.wind.set(w.x - this.vel.x, w.y - this.vel.y * 0.5, w.z - this.vel.z);
-    const rolling = this.state === 'roll' || this.state === 'getup' || this.state === 'flop';
+    const rolling = this.state === 'roll' || this.state === 'getup' || this.state === 'flop' || this.state === 'tackle';
     const late = (this.state === 'roll' && this.stateT > this.rollTime * 0.6) || (this.state === 'getup' && this.stateT > this.getupTime * 0.5);
     this._settle = late ? 1 : rolling ? (this._settle || 0) : Math.max(0, (this._settle || 0) - dt * 1.6);
     m.update(dt, this.wind, rolling, this._settle);

@@ -1,12 +1,21 @@
-// The skill tree: a few nodes you can learn with skill points. It is plain data (SKILLS), so adding a
-// skill is adding an entry; `requires` draws a node under the one it grows from. What you have learned
+// The skill tree: a few nodes you can learn with skill points, grown along elemental paths (PATHS, one column
+// each). It is plain data (SKILLS), so adding a skill is adding an entry; `requires` draws a line from the
+// node it grows from, which may sit on another path. What you have learned
 // is kept in the browser (localStorage). Open it from the menu or with K.
 const SAVE = 'nomad_skills';
-const GRANTED = 3;       // skill points in all, so far
+const GRANTED = 4;       // skill points in all, so far
+
+export const PATHS = {
+  strength: { name: 'Strength', col: 0 },
+  lightning: { name: 'Lightning', col: 1 },
+};
 
 const ICONS = {
   // a figure caught mid-blink between two streaks
   // a figure above a ring of shock on the ground
+  // a figure low on all fours with a bolt along its back
+  tackle: '<svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M9 31q5-9 17-8l8 3v7M13 31l-3 9M31 33l4 7M18 24l-5-5"/><path d="M40 12l-6 8h6l-5 8"/><path d="M2 22h6M1 30h5M4 38h5" opacity=".7"/></g></svg>',
   // a blade held up with a bolt coming down onto it
   storm: '<svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M28 3l-8 13h7l-6 12"/><path d="M24 31v14M18 37h12"/><path d="M10 14q-4 3 0 7M38 14q4 3 0 7" opacity=".7"/></g></svg>',
@@ -18,12 +27,14 @@ const ICONS = {
 };
 
 export const SKILLS = [
-  { id: 'skyslam', name: 'Sky Slam', cost: 1, requires: null, col: 1, row: 0, icon: ICONS.skyslam,
+  { id: 'skyslam', name: 'Sky Slam', path: 'strength', cost: 1, requires: null, row: 0, icon: ICONS.skyslam,
     desc: 'Press jump again in the air to leap much higher. At the top, click to plunge: the landing is a shockwave that hurts everything around you and tears up the grass.' },
-  { id: 'storm', name: 'Storm Call', cost: 1, requires: 'skyslam', col: 1, row: 1, icon: ICONS.storm,
-    desc: 'Press R. Hold the blade straight up and call down lightning onto it. For twenty seconds the sword crackles: it hits harder, stuns what it hits and singes the leaves.' },
-  { id: 'flash', name: 'Flash Roll', cost: 1, requires: null, col: 0, row: 0, icon: ICONS.flash,
+  { id: 'flash', name: 'Flash Roll', path: 'lightning', cost: 1, requires: null, row: 0, icon: ICONS.flash,
     desc: 'Tap the roll twice, fast (C or right-click). Instead of rolling you vanish in a flash of black lines and appear where the roll would have ended.' },
+  { id: 'storm', name: 'Storm Call', path: 'lightning', cost: 1, requires: 'skyslam', row: 1, icon: ICONS.storm,
+    desc: 'Press R. Hold the blade straight up and call down lightning onto it. For forty-five seconds the sword crackles: it hits harder, stuns what it hits and singes the leaves. Once it fades the sky needs ten seconds before it will answer again.' },
+  { id: 'tackle', name: 'Electrical Tackle', path: 'lightning', cost: 1, requires: 'storm', row: 2, icon: ICONS.tackle,
+    desc: 'Press T while the storm is on your blade. He drops to all fours, wrapped in lightning, and charges ahead, burning the ground behind him and stunning whatever he runs into.' },
 ];
 
 export class Skills {
@@ -63,20 +74,54 @@ export class Skills {
 
   render() {
     this.info.textContent = this.points + (this.points === 1 ? ' skill point' : ' skill points');
-    const rows = Math.max(...SKILLS.map((k) => k.row)) + 1, cols = Math.max(...SKILLS.map((k) => k.col)) + 1;
+    const paths = Object.entries(PATHS), cols = paths.length;
     this.tree.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 260px))`;
-    this.tree.style.gridTemplateRows = `repeat(${rows}, auto)`;
     this.tree.textContent = '';
+    // a heading for each path, then its skills (row 0 is the heading)
+    for (const [id, p] of paths) {
+      const h = document.createElement('div');
+      h.className = 'sk-path ' + id; h.textContent = p.name; h.style.gridColumn = p.col + 1; h.style.gridRow = 1;
+      this.tree.appendChild(h);
+    }
+    // a place held for what the Strength path will grow into
+    const soon = document.createElement('div');
+    soon.className = 'sk-node soon'; soon.textContent = 'More to come'; soon.style.gridColumn = PATHS.strength.col + 1; soon.style.gridRow = 3;
+    this.tree.appendChild(soon);
+    const nodes = {};
     for (const sk of SKILLS) {
       const state = this.has(sk.id) ? 'learned' : this.can(sk) ? 'ready' : 'locked';
       const n = document.createElement('button');
-      n.className = 'sk-node ' + state + (sk.requires ? ' has-req' : '');
-      n.style.gridColumn = sk.col + 1; n.style.gridRow = sk.row + 1;
+      nodes[sk.id] = n;
+      n.className = 'sk-node ' + sk.path + ' ' + state;
+      n.style.gridColumn = PATHS[sk.path].col + 1; n.style.gridRow = sk.row + 2;
       n.disabled = state !== 'ready';
       n.innerHTML = `<span class="sk-icon">${sk.icon}</span><span class="sk-body"><b>${sk.name}</b><i>${sk.desc}</i>` +
         `<em>${state === 'learned' ? 'Learned' : state === 'ready' ? `Learn · ${sk.cost} point` : sk.requires && !this.has(sk.requires) ? 'Needs ' + SKILLS.find((k) => k.id === sk.requires).name : `Needs ${sk.cost} point`}</em></span>`;
       n.onclick = () => this.learn(sk.id);
       this.tree.appendChild(n);
     }
+    this.links(nodes);
+  }
+
+  // a line from each skill up to the one it grows from, once the grid has been laid out (it may cross to another path)
+  links(nodes) {
+    const draw = () => {
+      const old = this.tree.querySelector('svg.sk-links'); if (old) old.remove();
+      if (this.root.hidden) return;
+      const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
+      svg.setAttribute('class', 'sk-links');
+      const T = this.tree.getBoundingClientRect();
+      for (const sk of SKILLS) {
+        if (!sk.requires) continue;
+        const a = nodes[sk.requires].getBoundingClientRect(), b = nodes[sk.id].getBoundingClientRect();
+        const x1 = a.left + a.width / 2 - T.left, y1 = a.bottom - T.top, x2 = b.left + b.width / 2 - T.left, y2 = b.top - T.top, ym = (y1 + y2) / 2;
+        const p = document.createElementNS(ns, 'path');
+        p.setAttribute('d', `M${x1} ${y1}V${ym}H${x2}V${y2}`);
+        p.setAttribute('class', this.has(sk.requires) ? 'on' : '');
+        svg.appendChild(p);
+      }
+      this.tree.appendChild(svg);
+    };
+    requestAnimationFrame(draw);
   }
 }

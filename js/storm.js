@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { groundY } from './world.js';
 import { damp } from './util.js';
 
-export const DURATION = 22, STUN = 2.2;
+export const DURATION = 45, COOLDOWN = 10, STUN = 2.2;       // seconds the sword stays charged; the wait after it runs out before it can be called again
 const _a = new THREE.Vector3(), _t = new THREE.Vector3(), _e = new THREE.Vector3(), _s = new THREE.Vector3();
 
 // a jagged line from `a` to `b`: midpoint displacement, wild in the middle and pinned at the ends
@@ -33,7 +33,7 @@ function jagged(a, b, segs, amp, rnd = Math.random) {
 export class Storm {
   constructor(game) {
     this.game = game;
-    this.charge = 0; this.gather = 0; this.want = 0;
+    this.charge = 0; this.cool = 0; this.gather = 0; this.want = 0;
     this.bolts = []; this.scorches = [];
     this.dimEl = document.getElementById('storm-dim'); this.flashEl = document.getElementById('storm-flash'); this.fillEl = document.getElementById('storm-fill'); this.barEl = document.getElementById('storm');
     this.spark = 0; this.arcT = 0;
@@ -113,12 +113,18 @@ export class Storm {
     const P = game.player, rig = P.weapon && P.weapon.rig;
     if (this.charge > 0) {
       this.charge -= dt;
-      if (this.charge <= 0) { this.charge = 0; game.audio?.storm('fizzle'); game.hud?.hint('The storm fades from the blade', 2.5); }
+      if (this.charge <= 0) { this.charge = 0; this.cool = COOLDOWN; game.audio?.storm('fizzle'); game.hud?.hint('The storm fades from the blade', 2.5); }
+    } else if (this.cool > 0) {
+      this.cool -= dt;
+      if (this.cool <= 0) { this.cool = 0; game.hud?.hint('The sky is ready to answer again (R)', 2.5); }
     }
     const fade = this.charge > 0 ? Math.min(1, this.charge / 1.5) : 0;
-    const fill = (this.charge / DURATION * 100).toFixed(1) + '%';
-    if (fill !== this._fill) { this._fill = fill; this.fillEl.style.width = fill; }
-    this.barEl.classList.toggle('on', this.charge > 0);
+    // the bar drains while the storm is on the blade and refills, dimmer, while the sky recovers
+    const fill = (this.charge > 0 ? this.charge / DURATION : this.cool > 0 ? 1 - this.cool / COOLDOWN : 0) * 100;
+    const fillS = fill.toFixed(1) + '%';
+    if (fillS !== this._fill) { this._fill = fillS; this.fillEl.style.width = fillS; }
+    this.barEl.classList.toggle('on', this.charge > 0 || this.cool > 0);
+    this.barEl.classList.toggle('cool', this.cool > 0);
     if (rig) {
       rig.chargeK = Math.max(fade, this.gather * 0.7);
       if (rig.drawn && rig.chargeK > 0.05) {

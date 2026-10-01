@@ -176,6 +176,7 @@ export class Audio {
       if (kind === 'gather') this.sweep(t, 180, 2400, 3200, 5, 1.0, 0.1);
       else if (kind === 'crackle') for (let i = 0; i < 3; i++) this.grain(t + Math.random() * 0.06, 2500 + Math.random() * 3500, 3, 0.012, 0.05 + 0.1 * k);
       else if (kind === 'zap') { this.grain(t, 4000, 0.6, 0.07, 0.4); this.sweep(t, 6000, 1200, 400, 1.5, 0.18, 0.22); this.thump(t, 150, 0.09, 0.3); }
+      else if (kind === 'tackle') { this.sweep(t, 120, 1100, 1800, 3, 0.55, 0.18); this.thump(t, 90, 0.35, 0.5); this.grain(t, 3500, 1, 0.12, 0.2); }
       else if (kind === 'fizzle') this.sweep(t, 3000, 600, 200, 2, 0.5, 0.1);
     } finally { this.bus = null; }
   }

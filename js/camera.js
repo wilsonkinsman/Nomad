@@ -34,7 +34,7 @@ export class CameraRig {
     this.blend = damp(this.blend, inMenu ? 0 : 1, 1.6, dt);
     this.dist = damp(this.dist, this.distTarget, 6, dt);
     // running eases the camera back and up to show more of the land ahead; stopping brings it in
-    const hs = player.state === 'ground' ? Math.hypot(player.vel.x, player.vel.z) : 0;
+    const hs = player.state === 'ground' || player.state === 'tackle' ? Math.hypot(player.vel.x, player.vel.z) : 0;
     const run = smoothstep(2.2, 3.4, hs), sprint = smoothstep(4.4, 6.2, hs);
     const pullT = inMenu ? 0 : 1.0 * run + 0.5 * sprint;
     this.pull = damp(this.pull, pullT, pullT > this.pull ? 0.9 : 1.4, dt);
@@ -88,7 +88,7 @@ export class CameraRig {
       cam.position.x += Math.sin(t * 1.3) * s; cam.position.y += Math.sin(t * 1.7 + 1) * s;
     }
     cam.lookAt(this._look);
-    const fovT = inMenu ? 42 : 52 + 2 * run + 3 * sprint + (player.state === 'dive' ? 4 : 0) - 26 * zoom;      // the bow zooms in
+    const fovT = inMenu ? 42 : 52 + 2 * run + 3 * sprint + (player.state === 'dive' ? 4 : 0) + (player.state === 'tackle' ? 7 : 0) - 26 * zoom;      // the bow zooms in
     this.fov = damp(this.fov, fovT, zoom > 0.02 || this.fov < 50 ? 7 : 1.5, dt);
     if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
   }

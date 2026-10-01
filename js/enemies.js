@@ -37,7 +37,7 @@ class Dummy {
     this.total = 0; this.last = 0; this.hits = 0; this.t0 = 0;
     this.sign = this.buildSign(x, z);
     this.target = { x, z, r: 0.5, y0: 0, y1: 2.0, dummy: this, onHit: (k, dmg, dx, dz, fx) => this.hit(dmg, dx, dz, k, fx) };
-    this.collider = { x, z, r: 0.42 };
+    this.collider = { x, z, r: 0.42, soft: true };
   }
   buildSign(x, z) {
     const c = document.createElement('canvas'); c.width = 256; c.height = 128; this.ctx = c.getContext('2d');
@@ -65,7 +65,8 @@ class Dummy {
     if (this.game.time - this.lastHitAt > 6 || this.lastHitAt === undefined) { this.total = 0; this.hits = 0; this.t0 = this.game.time; }
     this.lastHitAt = this.game.time;
     this.total += dmg; this.hits++; this.last = dmg;
-    this.vx += dz / l * 2.2; this.vz += -dx / l * 2.2;                      // rocks away from the blow
+    const hard = fx && fx.knock ? 3 : 1;
+    this.vx += dz / l * 2.2 * hard; this.vz += -dx / l * 2.2 * hard;        // rocks away from the blow
     G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 2.0, this.pos.z), String(dmg), fx && fx.zap ? 'zap big' : dmg >= 30 ? 'big' : '');
     this.drawSign();
     this.flash = 1;
@@ -118,7 +119,7 @@ class Trainee {
     this.armR.add(this.sword); this.armR.add(mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.2, 6).rotateX(Math.PI / 2), wood, 0, -0.52, 0));
     game.scene.add(this.group);
     this.target = { x, z, r: 0.5, y0: 0, y1: 1.9, enemy: this, get dead() { return this.enemy.state === 'dead'; }, onHit: (k, dmg, dx, dz, fx) => this.hurt(dmg, dx, dz, k, fx) };
-    this.collider = { x, z, r: 0.4 };
+    this.collider = { x, z, r: 0.4, soft: true };
     this.setState('idle');
   }
   setState(s) { this.state = s; this.t = 0; this.resolved = false; }
@@ -130,7 +131,8 @@ class Trainee {
     if (this.state === 'stagger') { dmg *= 2; crit = true; }
     this.hp -= dmg; this.flash = 1;
     if (kind === 'slam' && this.hp > 0) this.setState('stagger');          // the shockwave throws him off his feet
-    this.pos.x += dx / l * 0.25; this.pos.z += dz / l * 0.25;
+    const knock = fx && fx.knock ? fx.knock : 0.25;
+    this.pos.x += dx / l * knock; this.pos.z += dz / l * knock;
     G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 2.1, this.pos.z), (crit ? 'CRIT ' : '') + dmg, crit || dmg >= 30 ? 'big' : '');
     if (this.hp <= 0) { this.setState('dead'); G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 2.4, this.pos.z), 'DEFEATED', 'gold word'); }
     else if (this.state === 'windup' && kind !== 'arrow' && dmg >= 25) this.setState('stagger');      // a heavy blow breaks its wind-up
