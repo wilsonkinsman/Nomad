@@ -56,6 +56,21 @@ export const MOVE_KEYS = {
     [0.42, { spine: R(0.2, -0.1), chest: R(0.2, -0.15), hips: R(0.1, -0.15), stance: [0.48, -0.3, 0.19], grip: R(1), sp: R(-0.02, 0.0, 0.31), sa: R(0.6, 1.55, 0) }],
     [0.74, READY],
   ],
+  // Sky Slam. The blade over his head while he climbs (the same place as the top of the overhead), turned
+  // straight down as he plunges, then the crouch of the landing
+  rise: [
+    [0.00, READY],
+    [0.14, { grip: R(1), sp: R(0, 0.36, 0.12), sa: R(0, -0.35, 0), spine: R(-0.15), chest: R(-0.3), hips: R(-0.04), neck: R(0.1) }],
+  ],
+  plunge: [
+    [0.00, { grip: R(1), sp: R(0, 0.36, 0.12), sa: R(0, -0.35, 0), spine: R(-0.15), chest: R(-0.3), hips: R(-0.04), neck: R(0.1) }],
+    [0.10, { grip: R(1), sp: R(0, 0.3, 0.16), sa: R(0, 3.05, 0), spine: R(0.2), chest: R(0.3), hips: R(0.1), neck: R(-0.2) }],
+  ],
+  slamland: [
+    [0.00, { grip: R(1), sp: R(0, 0.3, 0.16), sa: R(0, 3.05, 0), spine: R(0.2), chest: R(0.3), hips: R(0.1), neck: R(-0.2) }],
+    [0.12, { grip: R(1), sp: R(0, -0.1, 0.24), sa: R(0, 2.5, 0), spine: R(0.36), chest: R(0.5), hips: R(0.16), neck: R(-0.25), stance: [0.36, -0.3, 0.2] }],
+    [0.6, READY],
+  ],
   // F: bring the blade up flat across his chest, the hilt on his right and the tip out past his left
   // shoulder, and hold it there; it comes back down to the ready pose
   parry: [

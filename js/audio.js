@@ -135,6 +135,31 @@ export class Audio {
     if (s.kind === 'leaves') for (let i = 0; i < 30; i++) this.grain(t + Math.random() * 0.35, 2500 + Math.random() * 4000, 2.5, 0.008, 0.25 * k);
   }
 
+  // the bow: the creak of a draw, a ping at full draw, the twang, a thunk in the target
+  bow(kind, power = 1) {
+    if (!this.ctx) return;
+    this.bus = this.swordBus;
+    try {
+      const t = this.ctx.currentTime + 0.005;
+      if (kind === 'draw') this.sweep(t, 160, 420, 520, 6, 0.9, 0.07);
+      else if (kind === 'full') { this.ping(t, 1760, 0.35, 0.1); this.thump(t, 140, 0.08, 0.2); }
+      else if (kind === 'release') {
+        const ctx = this.ctx, o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'triangle'; o.frequency.setValueAtTime(260 + 140 * power, t); o.frequency.exponentialRampToValueAtTime(90, t + 0.16);
+        g.gain.setValueAtTime(0.32, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2); o.connect(g).connect(this.bus); o.start(t); o.stop(t + 0.22);
+        this.sweep(t, 900, 3400 + 2000 * power, 1500, 1.2, 0.2, 0.18);
+      } else if (kind === 'hit') { this.thump(t, 170, 0.1, 0.4); this.grain(t, 1600, 1.0, 0.06, 0.2); }
+      else if (kind === 'stick') this.thump(t, 220, 0.06, 0.18);
+    } finally { this.bus = null; }
+  }
+
+  // the Sky Slam landing: the ground booms
+  slam() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + 0.005;
+    this.thump(t, 70, 0.5, 0.7); this.thump(t + 0.02, 130, 0.25, 0.4); this.grain(t, 400, 0.5, 0.5, 0.45, 'lowpass'); this.grain(t, 1800, 0.8, 0.12, 0.2);
+  }
+
   // taking a hit: a dull thud and a rasp
   hurt() {
     if (!this.ctx) return;

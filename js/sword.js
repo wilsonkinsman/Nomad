@@ -29,7 +29,12 @@ export const MOVES = {
   sheathe:  { dur: 0.66, swap: 0.38, hit: null, chain: 0.34, cancel: null, next: null },
   // F: the blade laid flat across his chest. Anything that lands while it is up (PARRY) is turned aside.
   parry:    { dur: 0.62, swap: 0.05, hit: null, chain: 0.28, cancel: 0.5, next: 'overhead' },
+  // Sky Slam: the blade over his head while he climbs, pointed down as he plunges, then the landing
+  rise:     { dur: 99, swap: 0.05, hit: null, chain: 0, cancel: null, next: null },
+  plunge:   { dur: 99, hit: null, chain: 0, cancel: null, next: null },
+  slamland: { dur: 0.6, hit: null, chain: 0.3, cancel: null, next: null },
 };
+const SLAM_RADIUS = 4.8;
 export const PARRY_WINDOW = [0.04, 0.34];     // seconds into the move that a blow is turned aside
 const PARRY_COOLDOWN = 0.22;
 const HURT = { draw: 14, overhead: 28, thrust: 20 };     // what each move does to something that can be hurt
@@ -204,7 +209,8 @@ export class Weapon {
     this.moveScale = 1; this.busy = false; this.faceLock = false;
     this.aim = 0; this.prevS = 0; this.struck = new Set(); this.lunged = false; this.swished = false;
     this.legs = 1; this._s = {};
-    this.parryCool = 0; this.glinted = false; this.deflected = 0;
+    this.parryCool = 0; this.glinted = false; this.deflected = 0; this.plungeReq = 0; this.apexCue = false;
+    this.waves = [];         // the rings of a slam spreading over the ground
     this._bp = Array.from({ length: CUT_AT.length }, () => new THREE.Vector3()); this._bpOk = false;   // where the blade was last frame
     this.debug = null;
     game.scene.add(rig.trail.mesh);
@@ -213,6 +219,7 @@ export class Weapon {
   // --- input -------------------------------------------------------------------------------
   press() {
     const P = this.player;
+    if (this.kind === 'rise') { this.plungeReq = 0.4; return; }       // click at the top of a Sky Slam leap
     if (!P.grounded || P.state !== 'ground') return;
     if (!this.kind) return this.begin('draw');
     const M = MOVES[this.kind];
@@ -246,8 +253,8 @@ export class Weapon {
 
   begin(kind) {
     const P = this.player, G = this.game, M = MOVES[kind];
-    this.glinted = false;
-    this.kind = kind; this.lastKind = kind; this.t = 0; this.swapped = kind === 'parry' && this.rig.drawn; this.queued = null;
+    this.glinted = false; this.plungeReq = 0; this.apexCue = false;
+    this.kind = kind; this.lastKind = kind; this.t = 0; this.swapped = (kind === 'parry' || kind === 'rise') && this.rig.drawn || kind === 'plunge' || kind === 'slamland'; this.queued = null;
     this.waitingOn = false; this.waiting = 0; this.struck.clear(); this.lunged = false; this.swished = false; this.landed = false; this.prevS = 0;
     // face where the camera looks
     const b = G.rig.basis();
@@ -269,6 +276,60 @@ export class Weapon {
   }
   release() { this.freeze = false; this.reset(); }
 
+  // Sky Slam: he has jumped again in the air: the blade goes up over his head
+  beginRise() {
+    const b = this.game.rig.basis();
+    this.begin('rise'); this.aim = Math.atan2(b.fx, b.fz);
+  }
+  // Sky Slam: the leap and the plunge (the player's vertical motion is in player.js)
+  airTick(dt) {
+    const P = this.player, G = this.game, M = MOVES[this.kind];
+    this.t += dt; this.busy = true; this.faceLock = true; this.moveScale = 0.8;
+    this.w = Math.min(1, this.w + dt * 12);
+    P.heading = dampAngle(P.heading, this.aim, 10, dt);
+    if (!this.swapped && this.t >= M.swap) { this.swapped = true; this.rig.setDrawn(true); G.audio?.sword('draw'); }
+    this.plungeReq = Math.max(0, this.plungeReq - dt);
+    if (this.kind === 'rise') {
+      if (P.grounded) { this.begin('sheathe'); return; }              // came down without slamming
+      if (!this.apexCue && P.vel.y < 2.6) { this.apexCue = true; this.rig.glint(1); G.hud?.hint('Click to slam!', 1.3); }
+      if (this.plungeReq > 0 && P.vel.y < 3.4) this.plunge();
+    } else {
+      if (P.vel.y > -26) P.vel.y = -28;
+      if (P.grounded && this.t > 0.04) this.slam();
+    }
+  }
+  plunge() {
+    const P = this.player, G = this.game, b = G.rig.basis();
+    this.begin('plunge'); this.aim = Math.atan2(b.fx, b.fz);
+    P.vel.set(Math.sin(this.aim) * 2.5, -28, Math.cos(this.aim) * 2.5);
+    G.audio?.whoosh(); G.hud?.hint('', 0);
+  }
+  // he lands: a shockwave. Hurts what is near, tears up the grass and throws up the ground.
+  slam() {
+    const P = this.player, G = this.game, R = SLAM_RADIUS, px = P.pos.x, pz = P.pos.z, py = P.pos.y;
+    const surf = surfaceAt(px, pz, this._s);
+    // the grass and the wheat are cut down in a wide disc and the rest of the field is flattened outward
+    G.cut.stamp(px, pz, R * 0.6, 1); G.cut.stamp(px, pz, R, 1);
+    G.trample.stamp(px, pz, R * 1.1, 1, 0, 0, 1);
+    for (let a = 0; a < 6.28; a += 0.5) G.cut.stamp(px + Math.cos(a) * R * 0.8, pz + Math.sin(a) * R * 0.8, R * 0.45, 1);
+    // everything hurt in reach, hardest at the middle
+    for (const c of G.enemies?.targets || []) {
+      if (c.dead) continue;
+      const d = Math.hypot(c.x - px, c.z - pz);
+      if (d < R + c.r) c.onHit?.('slam', Math.round(lerp(48, 22, clamp(d / R, 0, 1))), c.x - px, c.z - pz);
+    }
+    // the ground
+    G.snow.onImpact(new THREE.Vector3(px, py, pz), this.aim, 'land'); G.snow.stamp(px, pz, 2.4, 2.4, 0, 1, 1);
+    G.leaves.burst(px, py, pz, 3.4, 6);
+    const pz2 = G.particles;
+    for (let i = 0; i < 40; i++) { const a = i / 40 * Math.PI * 2; pz2.emit('dust', px + Math.cos(a) * 0.8, py + 0.1, pz + Math.sin(a) * 0.8, Math.cos(a) * 7, 0.8, Math.sin(a) * 7, 1.2, 1); }
+    for (let i = 0; i < 46; i++) { const a = Math.random() * Math.PI * 2, r = Math.random() * R * 0.8; pz2.emit(surf.wheat > 0.35 ? 'chaff' : 'clip', px + Math.cos(a) * r, py + 0.2, pz + Math.sin(a) * r, Math.cos(a) * 3, 3 + Math.random() * 4, Math.sin(a) * 3, 1.5, 1); }
+    this.waves.push({ x: px, y: py + 0.05, z: pz, t: 0 });
+    G.audio?.slam(); G.rig.shake = 1; G.hitStop = Math.max(G.hitStop, 0.12);
+    G.hud?.callout('SKY SLAM', 'gold');
+    this.begin('slamland'); this.w = 1;
+  }
+
   // --- per frame, before the player moves --------------------------------------------------
   tick(dt, inMenu) {
     const P = this.player, G = this.game, input = G.input;
@@ -279,6 +340,7 @@ export class Weapon {
     this.parryCool = Math.max(0, this.parryCool - dt);
     if (input.attack()) this.press();
     if (input.parry()) this.parry();
+    if (this.kind === 'rise' || this.kind === 'plunge') { this.airTick(dt); return; }
     // the legs take the sword stance only while he is not walking; blended, never switched
     this.legs = damp(this.legs, input.move().mag > 0.2 ? 0 : 1, 9, dt);
     this.buffer = Math.max(0, this.buffer - dt);
@@ -355,6 +417,7 @@ export class Weapon {
     this.rig.trail.update(dt, this.rig, this.rig.drawn && (cutting || (M && M.hit && this.t > M.hit[0] - 0.08 && this.t < M.hit[1] + 0.1)));
     this.cutSweep(dt, M);
     this.rig.updateGlint(dt, this.game.camera);
+    this.updateWaves(dt);
     if (M && M.hit && dt > 0 && !this.freeze) {
       const s = clamp((this.t - M.hit[0]) / (M.hit[1] - M.hit[0]), 0, 1);
       if (this.t >= M.hit[0] && this.t <= M.hit[1] + 1e-4) this.scan(this.kind, s);
@@ -426,6 +489,25 @@ export class Weapon {
       const a = dx * F.fx + dz * F.fz, b = dx * F.lx + dz * F.lz;
       return a >= HIT.thrust.from - c.r && a <= reach + c.r && Math.abs(b) <= HIT.thrust.half + c.r;
     });
+  }
+
+  // the shockwave: two rings of light racing out over the ground
+  updateWaves(dt) {
+    const G = this.game;
+    if (!this.waveMat) {
+      this.waveGeo = new THREE.RingGeometry(0.94, 1.0, 64).rotateX(-Math.PI / 2);
+      this.waveMat = new THREE.MeshBasicMaterial({ color: 0xffe2b0, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
+    }
+    for (let i = this.waves.length - 1; i >= 0; i--) {
+      const w = this.waves[i]; w.t += dt;
+      if (!w.meshes) { w.meshes = [0, 1].map(() => { const m = new THREE.Mesh(this.waveGeo, this.waveMat.clone()); m.renderOrder = 13; m.frustumCulled = false; G.scene.add(m); return m; }); }
+      const u = w.t / 0.55;
+      w.meshes.forEach((m, k) => {
+        const uu = clamp(u - k * 0.12, 0, 1), s = 0.3 + (SLAM_RADIUS * 1.1) * (1 - Math.pow(1 - uu, 3));
+        m.position.set(w.x, groundY(w.x, w.z) + 0.08, w.z); m.scale.set(s, 1, s); m.material.opacity = (1 - uu) * (k ? 0.5 : 0.9);
+      });
+      if (u >= 1.2) { for (const m of w.meshes) { G.scene.remove(m); m.material.dispose(); } this.waves.splice(i, 1); }
+    }
   }
 
   // ---------------------------------------------------------------- the blade cuts what grows

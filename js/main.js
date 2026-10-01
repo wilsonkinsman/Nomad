@@ -26,6 +26,7 @@ import { CameraRig } from './camera.js';
 import { Skills } from './skills.js';
 import { Flash } from './flash.js';
 import { Enemies, TRAINING } from './enemies.js';
+import { Bow } from './bow.js';
 
 const QUALITY = {
   low:    { ratio: 0.6,  msaa: 0, shadow: 1024, veg: 0.5 },
@@ -122,8 +123,9 @@ async function boot() {
   game.flash = new Flash(game);
   game.enemies = new Enemies(game);
   game.player.colliders.push(...game.enemies.colliders);
+  game.bow = new Bow(game);
   game.systems.push(game.grass, game.wheat, game.snow, game.leaves, game.props, game.particles, game.fireflies, game.hud, game.audio);
-  game.systems.push(game.flash, game.enemies);
+  game.systems.push(game.flash, game.enemies, game.bow);
   game.systems.unshift(game.contact);    // body hitboxes stamp before the snow and leaves update
   wireEvents();
   game.sky.setNight(settings.night);

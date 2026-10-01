@@ -22,7 +22,7 @@ export class Player {
     this.pos.y = groundY(this.pos.x, this.pos.z);
     this.vel = new THREE.Vector3();
     this.heading = Math.atan2(SUN_AZ.x, SUN_AZ.y);
-    this.grounded = true; this.coyote = 0;
+    this.grounded = true; this.coyote = 0; this.boosted = false;
     this.state = 'ground'; this.stateT = 0;
     this.stamina = 100; this.staminaDelay = 0; this.exhausted = false;
     this.sprinting = false;
@@ -119,6 +119,7 @@ export class Player {
     if (input.pad.active && !wantSprint) speed *= clamp(mag * 1.2, 0.3, 1);
     // surfaces
     if (W) speed *= W.moveScale;
+    if (this.game.bow) speed *= this.game.bow.moveScale;
     speed *= 1 - 0.48 * deep;
     speed *= 1 - 0.1 * S.wheat * (1 - S.path);
     if (S.kind === 'puddle') speed *= 0.95;
@@ -150,7 +151,7 @@ export class Player {
     const sp = Math.hypot(this.vel.x, this.vel.z);
     // heading follows travel direction, slower at speed (momentum)
     const prevHeading = this.heading;
-    if (this.state === 'ground' && sp > 0.25 && mag > 0 && !(W && W.faceLock)) {
+    if (this.state === 'ground' && sp > 0.25 && mag > 0 && !(W && W.faceLock) && !(this.game.bow && this.game.bow.aiming)) {
       const want = Math.atan2(this.vel.x, this.vel.z);
       this.heading = dampAngle(this.heading, want, this.grounded ? (sp > 5 ? 7 : 11) : 3, dt);
     }
@@ -163,6 +164,13 @@ export class Player {
 
     // ---------------------------------------------------------------- jump & dive
     this.coyote = this.grounded ? 0.12 : this.coyote - dt;
+    // Sky Slam: jump again in the air, much higher, the blade over his head
+    if (!inMenu && this.state === 'ground' && !this.grounded && this.coyote <= 0 && !this.boosted && input.jump() && g.skills?.has('skyslam') && W && !g.bow?.equipped) {
+      this.boosted = true; this.vel.y = 9.2;
+      W.beginRise();
+      this.emit('jump', this.pos.clone(), S);
+      for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2; g.particles.emit('dust', this.pos.x + Math.cos(a) * 0.3, this.pos.y + 0.2, this.pos.z + Math.sin(a) * 0.3, Math.cos(a) * 2.5, 0.3, Math.sin(a) * 2.5, 0.6, 1); }
+    }
     if (!inMenu && this.state === 'ground') {
       if (input.jump() && this.coyote > 0 && !(W && W.busy)) {
         this.vel.y = 4.5 - 1.2 * deep;
@@ -182,7 +190,9 @@ export class Player {
     }
 
     // ---------------------------------------------------------------- vertical
-    if (!this.grounded) this.vel.y += GRAV * dt;
+    // at the top of a Sky Slam leap he hangs for a moment (less gravity), the window to click
+    const hang = this.boosted && W && W.kind === 'rise' && Math.abs(this.vel.y) < 2.8 ? 0.4 : 1;
+    if (!this.grounded) this.vel.y += GRAV * dt * hang;
     this.pos.x += this.vel.x * dt;
     this.pos.z += this.vel.z * dt;
     this.pos.y += this.vel.y * dt;
@@ -194,14 +204,14 @@ export class Player {
       else { this.grounded = false; }
     } else if (this.pos.y <= gy) {
       const impact = -this.vel.y;
-      this.pos.y = gy; this.vel.y = 0; this.grounded = true;
+      this.pos.y = gy; this.vel.y = 0; this.grounded = true; this.boosted = false;
       if (this.state === 'dive') {
         if (deep > 0.25) { this.setState('flop'); this.emit('flop', this.pos.clone(), S, impact); }
         else { this.setState('roll'); this.emit('roll', this.pos.clone(), S, impact); }
         this.game.rig.shake = Math.max(this.game.rig.shake, 0.35);
       } else {
         this.landImpact = impact;
-        this.emit('land', this.pos.clone(), S, impact);
+        if (W && W.kind === 'plunge') W.slam(); else this.emit('land', this.pos.clone(), S, impact);
         if (impact > 8) this.game.rig.shake = Math.max(this.game.rig.shake, 0.3);
       }
     }
@@ -249,7 +259,7 @@ export class Player {
       state: this.state, stateT: this.stateT, turnRate: this.turnRate, accel: this.weapon && this.weapon.w > 0.01 ? 0 : this.accel,
       snow: clamp(this.snowDepth / 0.35, 0, 1), wheat: this.surface ? this.surface.wheat * (1 - this.surface.path) : 0,
       landImpact: this.landImpact, rollTime: this.rollTime, getupTime: this.getupTime, style: m.animStyle || {},
-      attack: this.weapon && this.weapon.rig === m.swordRig ? this.weapon.layer : null,
+      attack: this.weapon && this.weapon.rig === m.swordRig ? this.weapon.layer : null, aim: this.aimState || null,
     };
     const pose = this.anim.update(dt, P);
     this.landImpact = P.landImpact;

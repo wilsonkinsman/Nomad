@@ -24,7 +24,7 @@ export class CameraRig {
     const cam = this.cam;
     // look input
     if (!inMenu) {
-      const sens = 0.0022;
+      const sens = 0.0022 * (1 - 0.55 * (player.aimZoom || 0));      // slower while the bow is drawn
       this.yaw -= input.lookX * sens;
       this.pitch += input.lookY * sens;
       if (input.pad.active) { this.yaw -= input.pad.lx * 2.6 * dt; this.pitch += input.pad.ly * 1.8 * dt; }
@@ -39,7 +39,8 @@ export class CameraRig {
     const pullT = inMenu ? 0 : 1.0 * run + 0.5 * sprint;
     this.pull = damp(this.pull, pullT, pullT > this.pull ? 0.9 : 1.4, dt);
     const eye = player.model.camHeight ?? 1.48, hs1 = eye / 1.48;     // shorter characters: lower, closer camera
-    const arm = (this.dist + this.pull) * Math.sqrt(hs1);
+    const zoom = player.aimZoom || 0;
+    const arm = (this.dist + this.pull) * Math.sqrt(hs1) * (1 - 0.35 * zoom);
 
     // focus trails the body a little: feels like a heavy camera operator
     const target = new THREE.Vector3(player.pos.x, player.visualY + eye, player.pos.z);
@@ -52,7 +53,7 @@ export class CameraRig {
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
     const back = new THREE.Vector3(Math.sin(this.yaw) * cp, sp, Math.cos(this.yaw) * cp);
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
-    const shoulder = 0.55 * Math.min(1, this.dist / 3.6);
+    const shoulder = 0.55 * Math.min(1, this.dist / 3.6) + 0.6 * zoom;
     const gp = this.focus.clone().addScaledVector(back, arm).addScaledVector(right, shoulder);
     gp.y += this.pull * 0.3;
     const gl = this.focus.clone().addScaledVector(right, shoulder * 0.85).add(new THREE.Vector3(0, -0.05, 0));
@@ -87,8 +88,8 @@ export class CameraRig {
       cam.position.x += Math.sin(t * 1.3) * s; cam.position.y += Math.sin(t * 1.7 + 1) * s;
     }
     cam.lookAt(this._look);
-    const fovT = inMenu ? 42 : 52 + 2 * run + 3 * sprint + (player.state === 'dive' ? 4 : 0);
-    this.fov = damp(this.fov, fovT, 1.5, dt);
+    const fovT = inMenu ? 42 : 52 + 2 * run + 3 * sprint + (player.state === 'dive' ? 4 : 0) - 26 * zoom;      // the bow zooms in
+    this.fov = damp(this.fov, fovT, zoom > 0.02 || this.fov < 50 ? 7 : 1.5, dt);
     if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
   }
 

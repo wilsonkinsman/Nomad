@@ -104,6 +104,7 @@ export class AtsuModel {
 
     // leg lengths for the animation's foot-planting maths
     this.leg = { L1: P('LeftUpLeg').distanceTo(P('LeftLeg')), L2: P('LeftLeg').distanceTo(P('LeftFoot')), ankle: P('LeftFoot').y, hip: P('Hips').y };
+    this.aimFrameReady = true;       // the bow's arm solve works on this skeleton
     this.activate();
     this.pivotScale = P('Hips').y / 0.97;
     this.pivotY = 0.95 * this.pivotScale;
@@ -326,6 +327,7 @@ export class AtsuModel {
     this.pivot.position.y = this.pivotY; this.body.position.y = -this.pivotY;
     this.pivot.rotation.set(pose.pitch || 0, 0, pose.roll || 0);
     if (this.swordRig) this.gripIK(pose.grip || 0, pose.sp, pose.sa);
+    if (pose.aim && pose.aim.w > 0.002) this.aimIK(pose.aim);
   }
 
   // ---------------------------------------------------------------- two-handed grip
@@ -379,6 +381,24 @@ export class AtsuModel {
     this.solveArm('Right', T, Qh, w, -1);
   }
 
+  // Drawing a bow. The aim is a direction (yaw from where he faces, pitch up); the left arm reaches out along it
+  // carrying the bow, and the right hand brings the string back toward his chin as `charge` grows. His arms are
+  // short, so the bow is small and the draw is short. The frame is kept (in the scene's own coordinates) so the
+  // bow can be drawn exactly where the hands are. The hands keep their pose relative to the forearms.
+  aimIK({ w, yaw, pitch, charge }) {
+    const G = this.g;
+    this.scene.updateMatrixWorld(true);
+    const M = this.scene.matrixWorld, inv = new THREE.Matrix4().copy(M).invert();
+    const O = new THREE.Vector3().setFromMatrixPosition(G.Spine2.matrixWorld).applyMatrix4(inv);
+    const cp = Math.cos(pitch), a = new THREE.Vector3(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp);
+    const s = new THREE.Vector3(a.z, 0, -a.x).normalize(), u = new THREE.Vector3().crossVectors(a, s);
+    const Gp = O.clone().addScaledVector(s, 0.1).addScaledVector(u, 0.24).addScaledVector(a, 0.38);
+    const Np = Gp.clone().addScaledVector(a, -(0.08 + 0.2 * charge));
+    this.aimFrame = { G: Gp, N: Np, a, s, u };
+    this.solveArm('Left', Gp.clone().applyMatrix4(M), null, w, 1);
+    this.solveArm('Right', Np.clone().applyMatrix4(M), null, w, -1);
+  }
+
   armReach(side) {
     const G = this.g, a = G[side + 'Arm'], f = G[side + 'ForeArm'], h = G[side + 'Hand'];
     return _v.setFromMatrixPosition(a.matrixWorld).distanceTo(_p.setFromMatrixPosition(f.matrixWorld)) + _p.distanceTo(_s.setFromMatrixPosition(h.matrixWorld));
@@ -408,7 +428,7 @@ export class AtsuModel {
     const qf2 = d2.multiply(qf1);
     arm.quaternion.slerp(qp.clone().invert().multiply(qa2), w);
     fore.quaternion.slerp(qa2.clone().invert().multiply(qf2), w);
-    hand.quaternion.slerp(qf2.clone().invert().multiply(Qh), w);
+    if (Qh) hand.quaternion.slerp(qf2.clone().invert().multiply(Qh), w);
   }
 
   // ---------------------------------------------------------------- body capsules (cloth + hitboxes)

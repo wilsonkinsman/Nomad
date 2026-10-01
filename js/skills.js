@@ -2,26 +2,31 @@
 // skill is adding an entry; `requires` draws a node under the one it grows from. What you have learned
 // is kept in the browser (localStorage). Open it from the menu or with K.
 const SAVE = 'nomad_skills';
-const START_POINTS = 1;
+const GRANTED = 2;       // skill points in all, so far
 
 const ICONS = {
   // a figure caught mid-blink between two streaks
+  // a figure above a ring of shock on the ground
+  skyslam: '<svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">' +
+    '<path d="M24 4v14M18 12l6-8 6 8"/><circle cx="24" cy="24" r="3.2" fill="currentColor" stroke="none"/><path d="M24 28v6M8 40q16-9 32 0M3 44q21-12 42 0" opacity=".85"/></g></svg>',
   flash: '<svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">' +
     '<path d="M4 15h13M2 24h17M6 33h12" opacity=".7"/><circle cx="31" cy="14" r="4.5" fill="currentColor" stroke="none"/>' +
     '<path d="M31 20l-6 9 7 3-4 9M31 20l7 6M25 29l-7 2"/><path d="M42 18l3-3M43 27h4M41 36l3 3" opacity=".7"/></g></svg>',
 };
 
 export const SKILLS = [
+  { id: 'skyslam', name: 'Sky Slam', cost: 1, requires: null, col: 1, row: 0, icon: ICONS.skyslam,
+    desc: 'Press jump again in the air to leap much higher. At the top, click to plunge: the landing is a shockwave that hurts everything around you and tears up the grass.' },
   { id: 'flash', name: 'Flash Roll', cost: 1, requires: null, col: 0, row: 0, icon: ICONS.flash,
     desc: 'Tap the roll twice, fast (C or right-click). Instead of rolling you vanish in a flash of black lines and appear where the roll would have ended.' },
 ];
 
 export class Skills {
   constructor() {
-    this.learned = new Set(); this.points = START_POINTS;
+    this.learned = new Set();
     try {
       const s = JSON.parse(localStorage.getItem(SAVE) || 'null');
-      if (s && Array.isArray(s.learned)) { for (const id of s.learned) if (SKILLS.some((k) => k.id === id)) this.learned.add(id); this.points = Math.max(0, s.points | 0); }
+      if (s && Array.isArray(s.learned)) for (const id of s.learned) if (SKILLS.some((k) => k.id === id)) this.learned.add(id);
     } catch { /* private mode: start fresh */ }
     this.root = document.getElementById('skills');
     this.tree = document.getElementById('sk-tree');
@@ -32,6 +37,8 @@ export class Skills {
     this.render();
   }
 
+  // points left: what has been granted, less what the learned skills cost
+  get points() { let spent = 0; for (const id of this.learned) spent += SKILLS.find((k) => k.id === id).cost; return Math.max(0, GRANTED - spent); }
   has(id) { return this.learned.has(id); }
   get isOpen() { return !this.root.hidden; }
   can(sk) { return !this.has(sk.id) && this.points >= sk.cost && (!sk.requires || this.has(sk.requires)); }
@@ -39,14 +46,11 @@ export class Skills {
   learn(id) {
     const sk = SKILLS.find((k) => k.id === id);
     if (!sk || !this.can(sk)) return;
-    this.learned.add(id); this.points -= sk.cost; this.save(); this.render();
+    this.learned.add(id); this.save(); this.render();
   }
   // give every point back
-  reset() {
-    let back = 0; for (const id of this.learned) back += SKILLS.find((k) => k.id === id).cost;
-    this.learned.clear(); this.points += back; this.save(); this.render();
-  }
-  save() { try { localStorage.setItem(SAVE, JSON.stringify({ learned: [...this.learned], points: this.points })); } catch { /* ignore */ } }
+  reset() { this.learned.clear(); this.save(); this.render(); }
+  save() { try { localStorage.setItem(SAVE, JSON.stringify({ learned: [...this.learned] })); } catch { /* ignore */ } }
 
   open() { this.root.hidden = false; this.render(); }
   close() { this.root.hidden = true; }

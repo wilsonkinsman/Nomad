@@ -214,7 +214,7 @@ export class Animator {
     }
     out.hipsX = lerp(L.hipsX, O.hipsX, w); out.hipsY = lerp(L.hipsY, O.hipsY, w); out.hipsZ = lerp(L.hipsZ, O.hipsZ, w);
     out.pitch = lerp(L.pitch, O.pitch, w); out.roll = lerp(L.roll, O.roll, w); out.pivotY = lerp(L.pivotY, O.pivotY, w);
-    out.grip = 0; out.sp = out.sa = null;
+    out.grip = 0; out.sp = out.sa = null; out.aim = P.aim || null;
     if (P.attack && P.attack.w > 0.001 && w < 0.5) this.attackLayer(out, P.attack, dt);
     else { this._atkKind = null; this._atkLast = null; this._atkOff = null; this._atkVel = null; }   // layer is off: nothing stale to fade from
     return out;
