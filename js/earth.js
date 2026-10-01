@@ -19,8 +19,8 @@ import { clamp, smoothstep } from './util.js';
 import { mergeVertices } from '../lib/utils/BufferGeometryUtils.js';
 
 export const DURATION = 40, COOLDOWN = 10, CAGE = 6, WALL_LIFE = 10;
-export const KICK_TIME = 0.98;                       // the whole Rock Kick, stomp to standing
-const STOMP_AT = 0.28, KICK_AT = 0.6, KICK_SPEED = 24, KICK_DMG = 30, KICK_KNOCK = 1.6;
+export const KICK_TIME = 1.05;                       // the whole Rock Kick, stomp to standing
+const STOMP_AT = 0.26, KICK_AT = 0.56, KICK_SPEED = 44, KICK_DMG = 42, KICK_KNOCK = 2.8;
 const MAX_WALLS = 3, RISE = 0.28, FALL = 0.55;
 
 const _k = new THREE.Vector3();
@@ -279,11 +279,12 @@ export class Earth {
     if (!this.kicked && t >= KICK_AT) { this.kicked = true; this.kick(P); }
     if (t >= KICK_TIME) P.setState('ground');
   }
-  // where the boulder hangs, ready for the foot: in front of him at knee height (scaled to the character)
+  // the boulder's size for this character (radius, metres): big, about his hip height across
+  rockR(P) { return 0.46 * (P.model.camHeight ?? 1.48) / 1.18; }
+  // where the boulder hangs, ready for the foot: in front of him at hip height, just past where the side kick lands
   kickSpot(P, out) {
-    const s = (P.model.camHeight ?? 1.48), fx = Math.sin(P.heading), fz = Math.cos(P.heading);
-    const rx = Math.cos(P.heading), rz = -Math.sin(P.heading), side = -0.12 * s;        // a little to the kicking (right) side
-    return out.set(P.pos.x + fx * (0.42 * s + 0.2) + rx * side, P.pos.y + 0.31 * s, P.pos.z + fz * (0.42 * s + 0.2) + rz * side);
+    const s = (P.model.camHeight ?? 1.48), fx = Math.sin(P.heading), fz = Math.cos(P.heading), d = 0.4 * s + this.rockR(P) * 0.95;
+    return out.set(P.pos.x + fx * d, P.pos.y + 0.4 * s, P.pos.z + fz * d);
   }
   stomp(P) {
     const G = this.game, at = this.kickSpot(P, new THREE.Vector3()), gy = groundY(at.x, at.z);
@@ -295,15 +296,16 @@ export class Earth {
     G.trample.stamp(P.pos.x, P.pos.z, 1.0, 1, 0, 0, 1);
     // the boulder: it bursts up out of the ground where the stomp sent the shock
     const m = new THREE.Mesh(this.stoneGeos[(Math.random() * 4) | 0], this.stoneMat);
-    m.scale.setScalar(0.3 * (P.model.camHeight ?? 1.48) / 1.18); m.castShadow = true; m.frustumCulled = false;
-    m.position.set(at.x, gy - 0.4, at.z);
+    const R = this.rockR(P);
+    m.scale.setScalar(R); m.castShadow = true; m.frustumCulled = false;
+    m.position.set(at.x, gy - R * 1.6, at.z);
     G.scene.add(m);
-    const r = { m, state: 'rise', t: 0, from: gy - 0.4, vel: new THREE.Vector3(), spin: new THREE.Vector3(1 + Math.random() * 2, 2 + Math.random() * 3, 0), r: m.scale.x };
+    const r = { m, state: 'rise', t: 0, from: gy - R * 1.6, vel: new THREE.Vector3(), spin: new THREE.Vector3(1 + Math.random() * 2, 2 + Math.random() * 3, 0), r: m.scale.x };
     this.rocks.push(r); this.kickRock = r;
     // tearing free: a spray of small stones and a puff of dirt, a hole torn in the grass
-    this.chips(at.x, gy + 0.1, at.z, 16, 3.2, 5.5);
-    G.particles.emit('dust', at.x, gy + 0.1, at.z, 0, 2.2, 0, 0.9, 16);
-    G.cut.stamp(at.x, at.z, 0.6, 1);
+    this.chips(at.x, gy + 0.1, at.z, 24, 4, 7);
+    G.particles.emit('dust', at.x, gy + 0.1, at.z, 0, 2.6, 0, 1.1, 26);
+    G.cut.stamp(at.x, at.z, R + 0.4, 1); G.trample.stamp(at.x, at.z, R + 1.2, 1, 0, 0, 1);
     G.leaves.burst?.(at.x, gy, at.z, 0.9, 3);
   }
   // small stones thrown out from (x, y, z): n of them, sideways speed up to `out`, up to `up` upward
@@ -320,20 +322,27 @@ export class Earth {
     const G = this.game, r = this.kickRock;
     G.audio?.earth('kick'); G.rig.shake = Math.max(G.rig.shake, 0.5); G.hitStop = Math.max(G.hitStop, 0.06);
     if (!r || r.state !== 'rise') return;
-    const fx = Math.sin(P.heading), fz = Math.cos(P.heading);
+    const fx = Math.sin(P.heading), fz = Math.cos(P.heading), rx = fz, rz = -fx, p = r.m.position;
     // along where he faces, tipped up a touch toward where the camera looks
-    const up = clamp(-Math.sin(G.rig.pitch) * 0.5 + 0.06, -0.05, 0.25);
-    r.state = 'fly'; r.t = 0; r.vel.set(fx * KICK_SPEED, up * KICK_SPEED + 1.5, fz * KICK_SPEED);
-    r.spin.set(-18, 2, 0);
-    this.chips(r.m.position.x, r.m.position.y, r.m.position.z, 8, 2.5, 2.5);
-    G.particles.emit('dust', r.m.position.x, r.m.position.y, r.m.position.z, fx * 3, 0.5, fz * 3, 0.5, 10);
+    const up = clamp(-Math.sin(G.rig.pitch) * 0.4 + 0.02, -0.04, 0.18);
+    r.state = 'fly'; r.t = 0; r.vel.set(fx * KICK_SPEED, up * KICK_SPEED + 1.0, fz * KICK_SPEED);
+    r.spin.set(-26, 3, 0);
+    // the hit: a freeze, the camera kicked, a ring of dust and grit blown out round the point of contact
+    G.hitStop = Math.max(G.hitStop, 0.13); G.rig.shake = 1; P.dashFov = 12;
+    P.vel.x += fx * 2.5; P.vel.z += fz * 2.5;
+    G.audio?.sword('slam');
+    const cx = p.x - fx * r.r, cy = p.y, cz = p.z - fz * r.r;
+    for (let i = 0; i < 28; i++) { const a = i / 28 * 6.28, c = Math.cos(a), s = Math.sin(a); G.particles.emit('dust', cx, cy, cz, (rx * c) * 7 + fx * 2, s * 7, (rz * c) * 7 + fz * 2, 0.2, 1); }
+    this.chips(cx, cy, cz, 14, 4, 3);
+    G.trample.stamp(p.x, p.z, 1.6, 1, fx, fz, 1);
   }
   // a boulder breaks: gravel, dust, a crack of sound
   shatter(r, x, y, z) {
     const G = this.game;
     r.state = 'gone'; G.scene.remove(r.m);
-    this.chips(x, y, z, 14, 4, 4);
-    G.particles.emit('dust', x, y, z, 0, 1.2, 0, 1.0, 18);
+    this.chips(x, y, z, 26, 6, 5);
+    G.particles.emit('dust', x, y, z, 0, 1.5, 0, 1.4, 30);
+    G.leaves.burst?.(x, groundY(x, z), z, 1.5, 4);
     G.audio?.earth('crumble'); G.audio?.sword('slam');
     G.rig.shake = Math.max(G.rig.shake, 0.4);
   }
@@ -360,14 +369,16 @@ export class Earth {
         r.vel.y -= 6 * h;
         m.position.addScaledVector(r.vel, h);
         const p = m.position, gy = groundY(p.x, p.z);
-        // skimming low: it ploughs the grass and throws the leaves
-        if (p.y - gy < 0.7) { G.cut.stamp(p.x, p.z, 0.45, 1); if (Math.random() < 0.3) G.particles.emit('clip', p.x, gy + 0.2, p.z, r.vel.x * 0.1, 2, r.vel.z * 0.1, 0.6, 1); }
+        // skimming low: it ploughs the grass, and the air it pushes lays the field flat to either side
+        if (p.y - gy < r.r + 0.6) { G.cut.stamp(p.x, p.z, r.r + 0.2, 1); if (Math.random() < 0.3) G.particles.emit('clip', p.x, gy + 0.2, p.z, r.vel.x * 0.1, 2, r.vel.z * 0.1, 0.6, 1); }
+        if (p.y - gy < r.r + 1.5 && Math.random() < 0.5) { const sp = Math.hypot(r.vel.x, r.vel.z) || 1; G.trample.stamp(p.x, p.z, r.r + 1.0, 0.9, r.vel.x / sp, r.vel.z / sp, 0.5); }
+        if (Math.random() < 0.4) G.leaves.kick?.(p.x, p.z, r.r + 0.8, 1.2, r.vel.x * 0.3, r.vel.z * 0.3);
         for (const c of G.enemies?.targets || []) {
           if (c.dead) continue;
           const cy = groundY(c.x, c.z), dx = c.x - p.x, dz = c.z - p.z;
           if (Math.hypot(dx, dz) < c.r + r.r && p.y > cy - 0.2 && p.y < cy + (c.y1 || 1.9)) {
             c.onHit?.('rock', KICK_DMG, r.vel.x, r.vel.z, { knock: KICK_KNOCK });
-            G.hitStop = Math.max(G.hitStop, 0.08); G.audio?.sword('hit');
+            G.hitStop = Math.max(G.hitStop, 0.12); G.audio?.sword('hit'); G.rig.shake = 1;
             this.shatter(r, p.x, p.y, p.z); done = true; break;
           }
         }

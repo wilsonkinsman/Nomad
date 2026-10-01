@@ -53,7 +53,7 @@ export const SKILLS = [
   { id: 'wall', name: 'Earth Wall', path: 'earth', cost: 1, requires: 'earth', row: 1, col: 0, icon: ICONS.wall,
     desc: 'Press Q while Earth Power is on you. A wall of rock tears up out of the ground in front of you: arrows shatter on it, nothing walks through it, and a dash into it ends with whoever dashed stunned on the ground.' },
   { id: 'rockkick', name: 'Rock Kick', path: 'earth', cost: 1, requires: 'earth', row: 1, col: 1, icon: ICONS.rockkick,
-    desc: 'Press E while Earth Power is on you. Stomp, and a boulder bursts up out of the ground in a spray of stones; kick it and it flies low and hard, shattering on whatever it hits and throwing it back.' },
+    desc: 'Press E while Earth Power is on you. Stomp, and a boulder bursts up out of the ground in a spray of stones; side-kick it and it flies low and very fast, flattening the field as it passes and shattering on whatever it hits, throwing it back hard.' },
 ];
 
 export class Skills {

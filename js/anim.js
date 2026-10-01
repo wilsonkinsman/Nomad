@@ -11,22 +11,32 @@ import { KICK_TIME } from './earth.js';
 
 const TAU = Math.PI * 2;
 
-// Rock Kick, keyed: [seconds, { bone: [x, y, z], hipsY }]. The right leg stomps, then kicks.
-const RK_STAND = { thigh_R: [0], shin_R: [0.05], foot_R: [0], thigh_L: [0], shin_L: [0.05], foot_L: [0], spine: [0.05], chest: [0.03], neck: [-0.05], head: [0],
+// Rock Kick, keyed: [seconds, { bone: [x, y, z], hipsY }]. The right leg stomps; then he turns side-on (hips
+// round to his left, so his right side faces the rock), chambers the knee up to his chest and drives the leg
+// straight out sideways: a side kick, the body leaning away from it and the head turned to watch the target.
+const RK_STAND = { hips: [0, 0, 0], thigh_R: [0, 0, 0], shin_R: [0.05], foot_R: [0], thigh_L: [0, 0, 0], shin_L: [0.05], foot_L: [0], spine: [0.05, 0, 0], chest: [0.03, 0, 0], neck: [-0.05, 0, 0], head: [0, 0, 0],
   upperarm_L: [-0.1, 0, 0.15], upperarm_R: [-0.1, 0, -0.15], forearm_L: [-0.3], forearm_R: [-0.3], hipsY: 0 };
 const ROCKKICK = [
   [0.0, RK_STAND],
-  [0.18, { thigh_R: [-1.3], shin_R: [1.55], foot_R: [0.25], thigh_L: [-0.08], shin_L: [0.15], foot_L: [-0.07], spine: [-0.05], chest: [-0.05], neck: [0.05], head: [0],
-    upperarm_L: [-0.3, 0, 0.9], upperarm_R: [-0.3, 0, -0.9], forearm_L: [-0.5], forearm_R: [-0.5], hipsY: 0.02 }],
-  [0.28, { thigh_R: [-0.4], shin_R: [0.65], foot_R: [-0.2], thigh_L: [-0.38], shin_L: [0.7], foot_L: [-0.3], spine: [0.28], chest: [0.18], neck: [-0.2], head: [-0.1],
-    upperarm_L: [0.25, 0, 0.55], upperarm_R: [0.25, 0, -0.55], forearm_L: [-0.6], forearm_R: [-0.6], hipsY: -0.09 }],
-  [0.47, { thigh_R: [0.6], shin_R: [1.4], foot_R: [0.35], thigh_L: [-0.22], shin_L: [0.4], foot_L: [-0.18], spine: [-0.1], chest: [-0.06], neck: [0.05], head: [0.05],
-    upperarm_L: [-0.9, 0, 0.45], upperarm_R: [0.6, 0, -0.5], forearm_L: [-0.7], forearm_R: [-0.4], hipsY: -0.05 }],
-  [0.6, { thigh_R: [-1.55], shin_R: [0.12], foot_R: [0.45], thigh_L: [0.08], shin_L: [0.22], foot_L: [-0.3], spine: [-0.28], chest: [-0.12], neck: [0.2], head: [0.1],
-    upperarm_L: [0.55, 0, 0.6], upperarm_R: [-0.7, 0, -0.6], forearm_L: [-0.4], forearm_R: [-0.6], hipsY: 0 }],
-  [0.72, { thigh_R: [-1.3], shin_R: [0.3], foot_R: [0.3], thigh_L: [0.05], shin_L: [0.2], foot_L: [-0.25], spine: [-0.2], chest: [-0.08], neck: [0.15], head: [0.05],
-    upperarm_L: [0.4, 0, 0.5], upperarm_R: [-0.5, 0, -0.5], forearm_L: [-0.4], forearm_R: [-0.5], hipsY: 0 }],
-  [0.98, RK_STAND],
+  // knee up
+  [0.16, { hips: [0, 0, 0], thigh_R: [-1.35, 0, 0], shin_R: [1.6], foot_R: [0.25], thigh_L: [-0.08, 0, 0], shin_L: [0.15], foot_L: [-0.07], spine: [-0.05, 0, 0], chest: [-0.05, 0, 0], neck: [0.05, 0, 0], head: [0, 0, 0],
+    upperarm_L: [-0.3, 0, 0.9], upperarm_R: [-0.3, 0, -0.9], forearm_L: [-0.5], forearm_R: [-0.5], hipsY: 0.03 }],
+  // stomp
+  [0.26, { hips: [0, 0, 0], thigh_R: [-0.45, 0, 0], shin_R: [0.75], foot_R: [-0.25], thigh_L: [-0.45, 0, 0], shin_L: [0.8], foot_L: [-0.35], spine: [0.32, 0, 0], chest: [0.2, 0, 0], neck: [-0.25, 0, 0], head: [-0.1, 0, 0],
+    upperarm_L: [0.3, 0, 0.6], upperarm_R: [0.3, 0, -0.6], forearm_L: [-0.7], forearm_R: [-0.7], hipsY: -0.11 }],
+  // turn side-on and chamber: knee tucked up to the chest, foot cocked
+  [0.48, { hips: [0, 1.35, 0], thigh_R: [-1.0, 0, -0.9], shin_R: [2.1], foot_R: [-0.3], thigh_L: [-0.15, 0, 0.05], shin_L: [0.35], foot_L: [-0.2], spine: [0.05, -0.2, 0.25], chest: [0.05, -0.25, 0.2], neck: [0, -0.4, 0], head: [0, -0.35, 0],
+    upperarm_L: [-0.4, 0, 1.0], upperarm_R: [-0.9, 0, -0.4], forearm_L: [-1.2], forearm_R: [-1.6], hipsY: -0.06 }],
+  // the kick: the leg driven straight out at hip height, the body leaning hard away from it
+  [0.58, { hips: [0, 1.45, 0], thigh_R: [-0.25, 0, -1.55], shin_R: [0.0], foot_R: [-0.5], thigh_L: [0.0, 0, 0.12], shin_L: [0.12], foot_L: [-0.1], spine: [0.0, -0.3, 0.55], chest: [0.0, -0.3, 0.35], neck: [0, -0.5, -0.3], head: [0, -0.4, -0.2],
+    upperarm_L: [0.2, 0, 0.5], upperarm_R: [-0.4, 0, -1.1], forearm_L: [-0.5], forearm_R: [-0.3], hipsY: -0.02 }],
+  // hold it there a beat
+  [0.74, { hips: [0, 1.45, 0], thigh_R: [-0.25, 0, -1.45], shin_R: [0.08], foot_R: [-0.45], thigh_L: [0.0, 0, 0.1], shin_L: [0.15], foot_L: [-0.1], spine: [0.0, -0.3, 0.5], chest: [0.0, -0.3, 0.32], neck: [0, -0.5, -0.28], head: [0, -0.4, -0.18],
+    upperarm_L: [0.2, 0, 0.5], upperarm_R: [-0.4, 0, -1.0], forearm_L: [-0.5], forearm_R: [-0.35], hipsY: -0.02 }],
+  // re-chamber and come back round
+  [0.86, { hips: [0, 0.9, 0], thigh_R: [-0.9, 0, -0.6], shin_R: [1.8], foot_R: [-0.2], thigh_L: [-0.1, 0, 0.05], shin_L: [0.3], foot_L: [-0.15], spine: [0.05, -0.15, 0.2], chest: [0.03, -0.15, 0.1], neck: [0, -0.3, 0], head: [0, -0.2, 0],
+    upperarm_L: [-0.2, 0, 0.6], upperarm_R: [-0.5, 0, -0.5], forearm_L: [-0.8], forearm_R: [-1.0], hipsY: -0.04 }],
+  [1.05, RK_STAND],
 ];
 
 export class Animator {
