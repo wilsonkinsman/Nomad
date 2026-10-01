@@ -150,11 +150,12 @@ export class AtsuModel {
   // The frog's sculpt was weighted by heat-mapping, and on his back that went wrong. The pack and the
   // coat under it are one mesh, but pieces of the pack hung on his arms and legs and the coat's back
   // was a patchwork, so when he twisted or swung the pack tore away from the coat in streaks (an edge
-  // across the seam could stretch by 14 to 39 cm). Everything behind his torso now shares one smooth
-  // deformation: weights run down the spine chain by height (hips, spine, spine 1, spine 2) with a
-  // little shoulder at the top, so the pack and the coat it sits on always move together. Limb weights
-  // on vertices nowhere near that limb are dropped, sleeves and hands keep their own, and the handover
-  // between a sleeve and the back is eased by diffusing the weights along the mesh a few rings.
+  // across the seam could stretch by 14 to 39 cm). Now the pack and the coat under it are one rigid
+  // piece on a single spine bone, and the rest of the coat's back takes a smooth gradient down the
+  // spine chain (hips, spine, spine 1, spine 2, a little shoulder at the top), so a twist is spread
+  // over the whole torso instead of tearing at a seam. Limb weights on vertices nowhere near that limb
+  // are dropped, sleeves and hands keep their own, and the handover between a sleeve and the back is
+  // eased by diffusing the weights along the mesh a few rings.
   reskinBack() {
     const mesh = this.scene.getObjectByName('Ronin_Low');
     if (!mesh || !mesh.isSkinnedMesh) return;
@@ -261,7 +262,18 @@ export class AtsuModel {
       [cur, nxt] = [nxt, cur];
       nxt.set(cur);
     }
-    // 4. the four strongest influences per vertex, as the GPU skins with four
+    // 4. the pack itself is rigid: it, and the coat directly under it, ride on one spine bone (spine 1, the
+    //    middle of the pack) with no shear, easing back to the torso's gradient above and below it
+    for (let i = 0; i < N; i++) {
+      const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2];
+      let r = sst(-0.12, -0.26, z) * sst(0.3, 0.52, y) * (1 - sst(0.84, 1.06, y)) * (1 - sst(0.46, 0.6, Math.abs(x)));
+      if (r <= 0) continue;
+      let a = 0, h = 0; for (const k of ARM) a += cur[i * B + k]; for (const k of HEAD) h += cur[i * B + k];
+      r *= (1 - sst(0.3, 0.7, h)) * (1 - sst(0.25, 0.7, a));
+      for (let k = 0; k < B; k++) cur[i * B + k] *= 1 - r;
+      cur[i * B + bi.Spine1] += r;
+    }
+    // 5. the four strongest influences per vertex, as the GPU skins with four
     for (let i = 0; i < N; i++) {
       const row = []; for (let k = 0; k < B; k++) if (cur[i * B + k] > 1e-5) row.push([k, cur[i * B + k]]);
       row.sort((a, b) => b[1] - a[1]);

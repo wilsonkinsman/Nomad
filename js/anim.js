@@ -241,7 +241,9 @@ export class Animator {
       for (let i = 0; i < 3; i++) r[i] = lerp(r[i], val(k, i), wt);
     }
     out.grip = (pose.grip ? pose.grip[0] : 0) * wt;     // how much both hands are on the hilt (a two-handed hold)
-    if (out.grip > 0.002 && pose.sp && pose.sa) { out.sp = pose.sp; out.sa = pose.sa; }     // and where the sword is, in the chest's frame
+    // and where the sword is, in the chest's frame (it gets the same smoothed hand-over as the bones)
+    const swordAt = pose.sp && pose.sa ? [0, 1, 2].map((i) => val('sp', i)).concat([0, 1, 2].map((i) => val('sa', i))) : null;
+    if (out.grip > 0.002 && swordAt) { out.sp = swordAt.slice(0, 3); out.sa = swordAt.slice(3); }
     // legs: planted in a stance that suits the move (only when he is not walking)
     const st = pose.stance ? [val('stance', 0), val('stance', 1), val('stance', 2)] : null, wl = wt * (A.legs ?? 1);
     if (st && wl > 0.001) {
@@ -270,6 +272,12 @@ export class Animator {
     const prevS = L.stance;
     vel.stance = prevS && st && dt > 0 ? st.map((v, i) => (v - prevS[i]) / dt) : [0, 0, 0];
     L.stance = st ? st.slice() : null;
+    // the sword's path as one six-number channel pair, so the next move can start from where this one was
+    for (const [k, o] of [['sp', 0], ['sa', 3]]) {
+      const cur = swordAt ? swordAt.slice(o, o + 3) : null, prev = L[k];
+      vel[k] = prev && cur && dt > 0 ? cur.map((v, i) => (v - prev[i]) / dt) : [0, 0, 0];
+      L[k] = cur;
+    }
   }
 
   springs(dt, b) {

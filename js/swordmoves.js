@@ -56,11 +56,14 @@ export const MOVE_KEYS = {
     [0.42, { spine: R(0.2, -0.1), chest: R(0.2, -0.15), hips: R(0.1, -0.15), stance: [0.48, -0.3, 0.19], grip: R(1), sp: R(-0.02, 0.0, 0.31), sa: R(0.6, 1.55, 0) }],
     [0.74, READY],
   ],
-  // return the blade to the sheath over the left shoulder
+  // return the blade to the sheath over the left shoulder: both hands carry it out to his left and round
+  // behind the shoulder (the sword's path, in the chest's frame, ends exactly where the arm-keyed pose
+  // below begins), then the right hand lets go and the left slides the blade home
   sheathe: [
     [0.00, READY],
-    [0.16, { grip: R(0) }],
-    [0.22, { upperarm_L: R(-3.3, 0, 0.8), forearm_L: R(-0.5), hand_L: R(0.1), spine: R(-0.1, 0.2), chest: R(-0.1, 0.5), hips: R(0, 0.25), stance: [0.05, -0.05, 0.03] }],
+    [0.11, { grip: R(1), sp: R(0.35, 0.15, 0.2), sa: R(1.3, 1.4, 1.2), stance: [0.08, -0.1, 0.04] }],
+    [0.22, { upperarm_L: R(-3.3, 0, 0.8), forearm_L: R(-0.5), hand_L: R(0.1), spine: R(-0.1, 0.2), chest: R(-0.1, 0.5), hips: R(0, 0.25), stance: [0.05, -0.05, 0.03], grip: R(1), sp: R(0.54, 0.28, -0.14), sa: R(2.76, 1.56, 2.37) }],
+    [0.27, { grip: R(0) }],
     [0.38, { upperarm_L: R(-3.4, 0, 0.9), forearm_L: R(-0.4), hand_L: R(0.1), spine: R(-0.1, 0.2), chest: R(-0.1, 0.5), hips: R(0, 0.25), stance: [0.03, -0.03, 0.02] }],
     [0.66, { upperarm_L: R(0.1, 0, 0.12), forearm_L: R(-0.3), hand_L: R(0), spine: R(0), chest: R(0), hips: R(0), stance: [0, 0, 0] }],
   ],
