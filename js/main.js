@@ -19,7 +19,6 @@ import { BodyContact } from './contact.js';
 import { AtsuModel, loadAtsu } from './atsu.js';
 import { GLTFLoader } from '../lib/addons/GLTFLoader.js';
 import { Player } from './player.js';
-import { Nomad } from './nomad.js';
 import { Wind } from './wind.js';
 import { Input } from './input.js';
 import { CameraRig } from './camera.js';
@@ -37,9 +36,8 @@ const QUALITY = {
   high:   { ratio: 1.0,  msaa: 4, shadow: 2048, veg: 1.0 },
 };
 const SAVE = 'nomad_settings';
-const settings = Object.assign({ night: false, quality: 'medium', volume: 0.7, character: 'ronin' }, (() => { try { return JSON.parse(localStorage.getItem(SAVE)) || {}; } catch { return {}; } })());
-// the frog ronin became the main character: older saves that picked Atsu start as the ronin once
-if (settings.charV !== 2) { settings.character = 'ronin'; settings.charV = 2; }
+const settings = Object.assign({ night: false, quality: 'medium', volume: 0.7 }, (() => { try { return JSON.parse(localStorage.getItem(SAVE)) || {}; } catch { return {}; } })());
+delete settings.character; delete settings.charV;      // there is one wanderer now: the ronin
 const saveSettings = () => { try { localStorage.setItem(SAVE, JSON.stringify(settings)); } catch { /* private mode */ } };
 
 const $ = (id) => document.getElementById(id);
@@ -102,7 +100,7 @@ async function boot() {
   const tx = { fabric: fabricTextures(), leather: leatherTextures(), straw: strawTextures(), fur: furTexture(),
     bark: barkTextures(false), birch: barkTextures(true), foliage: foliageAtlas(), wood: woodTextures(), rock: rockTextures() };
   game.tx = tx;
-  game.player = new Player(game, tx, await characterModel(settings.character));
+  game.player = new Player(game, tx, await loadRonin());
   syncMenu();
   await progress(0.7, 'Growing the meadow…');
   game.trample = new StampField(renderer, { kind: 'veg', res: 512, minX: -128, minZ: -128, size: 256 });
@@ -159,36 +157,22 @@ function showMenu(on) {
   if (!on) canvas.requestPointerLock?.();
   $('btn-start').textContent = game.started ? 'Continue' : 'Wander';
 }
-// characters load the first time they're picked: the frog ronin (default), Atsu, or the procedural nomad
-const CHARACTERS = {
-  ronin: { label: 'The ronin', file: 'ronin', opts: { ribbons: false, keepSplay: true, camHeight: 1.18, style: { arm: 0.5, elbow: 0.55, armOut: 0.1 }, sword: {} } },
-  atsu: { label: 'Atsu', file: 'atsu', opts: {} },
-};
-game.models = {};
-async function characterModel(c) {
-  if (c === 'nomad' || !CHARACTERS[c]) return game.models.nomad || null;
-  if (game.models[c]) return game.models[c];
-  const C = CHARACTERS[c];
+// the wanderer: the frog ronin (the rig is driven by AtsuModel, the loader for our rigged characters)
+const RONIN = { ribbons: false, keepSplay: true, camHeight: 1.18, style: { arm: 0.5, elbow: 0.55, armOut: 0.1 }, sword: {} };
+async function loadRonin() {
   try {
-    game.models[c] = new AtsuModel(await loadAtsu(GLTFLoader, 'assets/', C.file), game.tx, C.opts);
+    const m = new AtsuModel(await loadAtsu(GLTFLoader, 'assets/', 'ronin'), game.tx, RONIN);
     game.charError = null;
+    return m;
   } catch (e) {
-    console.error(C.label + ' failed to load', e);
-    game.charError = C.label + ' could not load here (' + (e.message || String(e)) + '), so the nomad walks instead.';
-    return game.models.nomad || null;
+    // only if the model itself can't be loaded: the player falls back to a plain procedural figure
+    console.error('The ronin failed to load', e);
+    game.charError = 'The ronin could not load here (' + (e.message || String(e)) + ').';
+    return null;
   }
-  game.atsu = game.models.atsu;      // dev tools look for it
-  return game.models[c];
-}
-function currentCharacter() {
-  const m = game.player?.model;
-  for (const c in game.models) if (game.models[c] === m) return c;
-  return game.player ? 'nomad' : settings.character;
 }
 function syncMenu() {
   $('btn-night').setAttribute('aria-pressed', settings.night ? 'true' : 'false');
-  const cur = currentCharacter();
-  for (const b of $('seg-character').children) b.classList.toggle('on', b.dataset.c === cur);
   $('char-note').hidden = !game.charError;
   $('char-note').textContent = game.charError || '';
   for (const b of $('seg-quality').children) b.classList.toggle('on', b.dataset.q === settings.quality);
@@ -204,15 +188,6 @@ $('btn-night').onclick = () => {
   settings.night = !settings.night; saveSettings(); syncMenu();
   game.sky.setNight(settings.night);
   for (const s of game.systems) s.setNight?.(settings.night);
-};
-$('seg-character').onclick = async (e) => {
-  const c = e.target.dataset.c; if (!c || !game.player) return;
-  settings.character = c; saveSettings();
-  if (!game.models.nomad && !Object.values(game.models).includes(game.player.model)) game.models.nomad = game.player.model;
-  let m = await characterModel(c);
-  if (!m) m = game.models.nomad || (game.models.nomad = new Nomad(game.tx));
-  if (m !== game.player.model) game.player.setModel(m);
-  syncMenu();
 };
 $('seg-quality').onclick = (e) => { const q = e.target.dataset.q; if (!q) return; settings.quality = q; saveSettings(); syncMenu(); applyQuality(); };
 $('btn-skills').onclick = () => game.skills.open();

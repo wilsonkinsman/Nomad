@@ -62,7 +62,7 @@ export class Bow {
 
   setEquipped(on) {
     const G = this.game, P = G.player;
-    if (on && !P.model.aimFrameReady) { G.hud?.hint('The bow needs the ronin or Atsu', 2.5); return; }
+    if (on && !P.model.aimFrameReady) { G.hud?.hint('The bow needs the ronin', 2.5); return; }
     this.equipped = on;
     if (on) { P.weapon?.reset(); G.hud?.hint('Hold click to draw  ·  release to shoot  ·  B puts it away', 4); }
     else { this.aiming = false; this.charge = 0; }
