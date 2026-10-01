@@ -28,6 +28,8 @@ const MAP = {
 const END_G = { handEnd_L: 'LeftHandMiddle1', handEnd_R: 'RightHandMiddle1', toe_L: 'LeftToeBase', toe_R: 'RightToeBase' };
 
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _e = new THREE.Euler(), _v = new THREE.Vector3();
+const _m1 = new THREE.Matrix4(), _m2 = new THREE.Matrix4(), _m3 = new THREE.Matrix4(), _p = new THREE.Vector3(), _s = new THREE.Vector3();
+const FLIP = new THREE.Matrix4().makeScale(-1, 1, 1);      // x -> -x: swaps a left hand's local frame for the mirrored right hand's
 
 export class AtsuModel {
   // opts: { ribbons: true, keepSplay: false (keep the model's own sideways limb angles), camHeight,
@@ -118,6 +120,7 @@ export class AtsuModel {
     this.curl = 0.55; this.curlAxis = { Left: new THREE.Vector3(0, 0, -1), Right: new THREE.Vector3(0, 0, 1) };   // measured: these bend toward the palm
 
     this.fixWaistWeights();
+    this.reskinBack();
 
     this.colliders = [];
     this.cloths = [];
@@ -142,6 +145,130 @@ export class AtsuModel {
     const jobs = [['Atsu_Obi', 'Atsu_Bodyf_kimono', torso], ['Atsu_Cord', 'Atsu_Bodyf_kimono', torso],
       ['Atsu_HakamaFront', 'Atsu_Bodygi1', legs]];
     for (const [t, r, keep] of jobs) if (mesh[t] && mesh[r]) reskin(mesh[t], mesh[r], keep, this.g.Hips);
+  }
+
+  // The frog's sculpt was weighted by heat-mapping, and on his back that went wrong. The pack and the
+  // coat under it are one mesh, but pieces of the pack hung on his arms and legs and the coat's back
+  // was a patchwork, so when he twisted or swung the pack tore away from the coat in streaks (an edge
+  // across the seam could stretch by 14 to 39 cm). Everything behind his torso now shares one smooth
+  // deformation: weights run down the spine chain by height (hips, spine, spine 1, spine 2) with a
+  // little shoulder at the top, so the pack and the coat it sits on always move together. Limb weights
+  // on vertices nowhere near that limb are dropped, sleeves and hands keep their own, and the handover
+  // between a sleeve and the back is eased by diffusing the weights along the mesh a few rings.
+  reskinBack() {
+    const mesh = this.scene.getObjectByName('Ronin_Low');
+    if (!mesh || !mesh.isSkinnedMesh) return;
+    const g = mesh.geometry, pos = g.attributes.position, si = g.attributes.skinIndex, sw = g.attributes.skinWeight, ix = g.index;
+    const bones = mesh.skeleton.bones, B = bones.length, N = pos.count;
+    const bi = {}; bones.forEach((b, i) => { bi[b.name.replace(/^mixamorig:?/, '')] = i; });
+    const need = ['Hips', 'Spine', 'Spine1', 'Spine2', 'LeftShoulder', 'RightShoulder', 'Neck', 'Head'];
+    for (const s of ['Left', 'Right']) need.push(s + 'Arm', s + 'ForeArm', s + 'Hand', s + 'HandMiddle1', s + 'UpLeg', s + 'Leg', s + 'Foot', s + 'ToeBase');
+    if (!ix || need.some((n) => bi[n] === undefined || !this.g[n])) return;
+    const sst = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    // vertices and weights in the character's bind pose
+    const toChar = new THREE.Matrix4().multiplyMatrices(new THREE.Matrix4().copy(this.scene.matrixWorld).invert(), mesh.matrixWorld);
+    const P = new Float32Array(N * 3), v = new THREE.Vector3();
+    for (let i = 0; i < N; i++) { v.fromBufferAttribute(pos, i).applyMatrix4(toChar); P[i * 3] = v.x; P[i * 3 + 1] = v.y; P[i * 3 + 2] = v.z; }
+    const W0 = new Float32Array(N * B);
+    for (let i = 0; i < N; i++) for (let k = 0; k < 4; k++) W0[i * B + si.getComponent(i, k)] += sw.getComponent(i, k);
+    const bp = (n) => this.bindPos.get(this.g[n]);
+    const segDist = (i, a, b) => {
+      const ax = a.x, ay = a.y, az = a.z, bx = b.x - ax, by = b.y - ay, bz = b.z - az;
+      const px = P[i * 3] - ax, py = P[i * 3 + 1] - ay, pz = P[i * 3 + 2] - az;
+      const t = Math.min(1, Math.max(0, (px * bx + py * by + pz * bz) / (bx * bx + by * by + bz * bz)));
+      return Math.hypot(px - bx * t, py - by * t, pz - bz * t);
+    };
+    const chainDist = (i, names) => { let d = 9; for (let k = 0; k < names.length - 1; k++) d = Math.min(d, segDist(i, bp(names[k]), bp(names[k + 1]))); return d; };
+    const ARM = [], LEG = [];
+    for (const s of ['Left', 'Right']) { ARM.push(bi[s + 'Arm'], bi[s + 'ForeArm'], bi[s + 'Hand'], bi[s + 'HandMiddle1']); LEG.push(bi[s + 'UpLeg'], bi[s + 'Leg'], bi[s + 'Foot'], bi[s + 'ToeBase']); }
+    const HEAD = [bi.Neck, bi.Head];
+    const spine = [bi.Hips, bi.Spine, bi.Spine1, bi.Spine2], KN = [0.5, 0.6, 0.7, 0.8];
+    // the torso's own gradient at height y, with a little shoulder at the top outside the spine
+    const torso = (y, x, out) => {
+      out.fill(0);
+      for (let k = 0; k < 4; k++) {
+        const lo = k > 0 ? KN[k - 1] : -9, hi = k < 3 ? KN[k + 1] : 9;
+        const w = y <= KN[k] ? (k === 0 ? 1 : (y - lo) / (KN[k] - lo)) : (k === 3 ? 1 : (hi - y) / (hi - KN[k]));
+        out[spine[k]] = Math.min(1, Math.max(0, w));
+      }
+      const sh = 0.3 * sst(0.8, 0.95, y) * sst(0.12, 0.3, Math.abs(x));
+      if (x > 0) out[bi.LeftShoulder] = sh; else if (x < 0) out[bi.RightShoulder] = sh;
+      let sum = 0; for (let k = 0; k < B; k++) sum += out[k];
+      for (let k = 0; k < B; k++) out[k] /= sum;
+    };
+    // 1. limb weights on vertices nowhere near that limb are bogus: drop them
+    const Wc = new Float32Array(W0), Wt = new Float32Array(N * B), tmp = new Float32Array(B);
+    const armShare0 = new Float32Array(N);
+    for (let i = 0; i < N; i++) { let a = 0; for (const k of ARM) a += W0[i * B + k]; armShare0[i] = a; }
+    const sides = ['Left', 'Right'].map((s) => ({
+      arm: [s + 'Arm', s + 'ForeArm', s + 'Hand', s + 'HandMiddle1'], clav: ['Spine2', s + 'Shoulder', s + 'Arm'], leg: [s + 'UpLeg', s + 'Leg', s + 'Foot', s + 'ToeBase'],
+    }));
+    for (let i = 0; i < N; i++) {
+      for (const S of sides) {
+        const vA = 1 - sst(0.15, 0.25, Math.min(chainDist(i, S.arm), chainDist(i, S.clav)));
+        for (const n of S.arm) Wc[i * B + bi[n]] *= vA;
+        const vL = 1 - sst(0.18, 0.3, chainDist(i, S.leg));
+        for (const n of S.leg) Wc[i * B + bi[n]] *= vL;
+      }
+      // a sleeve or a hand is not a leg, however close it hangs to the thigh in the bind pose
+      const noLeg = 1 - sst(0.15, 0.5, armShare0[i]);
+      for (const k of LEG) Wc[i * B + k] *= noLeg;
+      // the weight that freed goes to the torso (not on sleeves and hands, which stay with their own arm)
+      let sum = 0; for (let k = 0; k < B; k++) sum += Wc[i * B + k];
+      torso(P[i * 3 + 1], P[i * 3], tmp);
+      for (let k = 0; k < B; k++) Wt[i * B + k] = tmp[k];
+      const give = (1 - sum) * (1 - sst(0.15, 0.5, armShare0[i]));
+      sum += give;
+      for (let k = 0; k < B; k++) Wc[i * B + k] = (Wc[i * B + k] + give * tmp[k]) / sum;
+    }
+    // 2. the whole back kit (pack and coat behind the torso) takes the torso's own gradient
+    const M = new Float32Array(N), Wn = new Float32Array(N * B);
+    for (let i = 0; i < N; i++) {
+      const x = P[i * 3], y = P[i * 3 + 1], z = P[i * 3 + 2];
+      let m = sst(-0.08, -0.18, z) * sst(0.42, 0.52, y) * (1 - sst(0.96, 1.08, y)) * (1 - sst(0.46, 0.6, Math.abs(x)));
+      let a = 0, h = 0; for (const k of ARM) a += Wc[i * B + k]; for (const k of HEAD) h += Wc[i * B + k];
+      m *= (1 - sst(0.25, 0.7, a)) * (1 - sst(0.3, 0.7, h));
+      M[i] = m;
+      for (let k = 0; k < B; k++) Wn[i * B + k] = (1 - m) * Wc[i * B + k] + m * Wt[i * B + k];
+    }
+    // 3. ease the handover where a sleeve meets the back: diffuse the weights along the mesh in the band around it
+    const nbr = Array.from({ length: N }, () => new Set());
+    for (let t = 0; t < ix.count; t += 3) {
+      const a = ix.getX(t), b = ix.getX(t + 1), c = ix.getX(t + 2);
+      nbr[a].add(b).add(c); nbr[b].add(a).add(c); nbr[c].add(a).add(b);
+    }
+    const near = (i) => P[i * 3 + 2] < 0.02 && P[i * 3 + 1] > 0.4 && P[i * 3 + 1] < 1.05;
+    let band = new Uint8Array(N);
+    for (let i = 0; i < N; i++) {
+      if (!near(i)) continue;
+      let a = 0; for (const k of ARM) a += Wn[i * B + k];
+      if ((a > 0.03 && a < 0.97) || (M[i] > 0.02 && M[i] < 0.98)) band[i] = 1;
+    }
+    for (let r = 0; r < 2; r++) {
+      const grown = new Uint8Array(band);
+      for (let i = 0; i < N; i++) if (!band[i] && near(i)) for (const j of nbr[i]) if (band[j]) { grown[i] = 1; break; }
+      band = grown;
+    }
+    const idxs = []; for (let i = 0; i < N; i++) if (band[i]) idxs.push(i);
+    let cur = Wn, nxt = new Float32Array(Wn);
+    for (let it = 0; it < 16; it++) {
+      for (const i of idxs) {
+        const nb = nbr[i], d = Math.max(1, nb.size);
+        for (let k = 0; k < B; k++) tmp[k] = 0;
+        for (const j of nb) for (let k = 0; k < B; k++) tmp[k] += cur[j * B + k];
+        for (let k = 0; k < B; k++) nxt[i * B + k] = 0.3 * cur[i * B + k] + 0.7 * tmp[k] / d;
+      }
+      [cur, nxt] = [nxt, cur];
+      nxt.set(cur);
+    }
+    // 4. the four strongest influences per vertex, as the GPU skins with four
+    for (let i = 0; i < N; i++) {
+      const row = []; for (let k = 0; k < B; k++) if (cur[i * B + k] > 1e-5) row.push([k, cur[i * B + k]]);
+      row.sort((a, b) => b[1] - a[1]);
+      const top = row.slice(0, 4), sum = top.reduce((s, a) => s + a[1], 0) || 1;
+      for (let k = 0; k < 4; k++) { si.setComponent(i, k, top[k] ? top[k][0] : 0); sw.setComponent(i, k, top[k] ? top[k][1] / sum : 0); }
+    }
+    si.needsUpdate = sw.needsUpdate = true;
   }
 
   // ---------------------------------------------------------------- pose
@@ -186,6 +313,90 @@ export class AtsuModel {
     this.pivotY = (pose.pivotY ?? 0.95) * this.pivotScale;
     this.pivot.position.y = this.pivotY; this.body.position.y = -this.pivotY;
     this.pivot.rotation.set(pose.pitch || 0, 0, pose.roll || 0);
+    if (this.swordRig) this.gripIK(pose.grip || 0, pose.sp, pose.sa);
+  }
+
+  // ---------------------------------------------------------------- two-handed grip
+  // A katana is held in two hands, and that is what gives a swing its weight. While `grip` is up the
+  // sword is placed relative to his chest, so it goes where his torso goes: `sp` is where the left fist
+  // (the lower hand, at the pommel end) is, in the chest's own frame (that is what decides whether the
+  // short arms can reach it); `sa` is the blade's angles [yaw, tilt, roll] in the frame of the chest's
+  // heading, which turns with the torso's twist but not its lean, so tilt is the true angle from the
+  // vertical (0 = blade straight up with the edge forward, 1.57 = level, past 2 = pointing down).
+  // Both arms are then solved to the hilt. The right hand takes the left hand's own grip reflected across the sword's symmetry plane
+  // (the plane through the blade and its edge: a katana is the same sword on either side of it) and
+  // slid up the hilt. The two hands are exact mirrors of each other in the rig, so that makes the fists
+  // wrap the hilt the same way from opposite sides. If the short right arm cannot reach, the hand slides
+  // down the hilt toward the left until it can. `w` blends from the animated arms (0) to the grip (1).
+  gripIK(w, sp, sa) {
+    const rig = this.swordRig, G = this.g;
+    if (!rig || !rig.drawn || w < 0.002) return;
+    this.scene.updateMatrixWorld(true);
+    if (sp) {
+      // the chest's frame: x left, y up, z forward (the chest bone's own axes are tipped a few degrees)
+      const C = _m1.copy(G.Spine2.matrixWorld).multiply(_m2.makeRotationFromQuaternion(_q.copy(this.bindW.get(G.Spine2)).invert()));
+      // where the fist is: sp in the chest's frame, and which way the chest faces (its heading, without the lean)
+      const fist = new THREE.Vector3(sp[0], sp[1], sp[2]).applyMatrix4(C);
+      const fwd = new THREE.Vector3(0, 0, 1).transformDirection(C), up = new THREE.Vector3(0, 1, 0).transformDirection(this.scene.matrixWorld);
+      fwd.addScaledVector(up, -fwd.dot(up)).normalize();
+      const side = new THREE.Vector3().crossVectors(up, fwd);
+      const Sw = new THREE.Matrix4().makeBasis(side, up, fwd).setPosition(fist);
+      _e.set(0, 0, 0);
+      const yaw = new THREE.Matrix4().makeRotationY(sa[0]), R = _m3.makeRotationFromEuler(_e.set(sa[1], 0, 0, 'XYZ')), roll = new THREE.Matrix4().makeRotationY(sa[2]);
+      Sw.multiply(yaw).multiply(R).multiply(roll).multiply(new THREE.Matrix4().makeTranslation(0, rig.at, 0));   // fist -> guard
+      const Hl = Sw.multiply(new THREE.Matrix4().copy(rig.group.matrix).invert());
+      const T = new THREE.Vector3(), Q = new THREE.Quaternion();
+      Hl.decompose(T, Q, _s);
+      this.solveArm('Left', T, Q, w, 1);
+      G.LeftArm.updateMatrixWorld(true);
+    }
+    const Hl = G.LeftHand.matrixWorld;
+    const Sw = new THREE.Matrix4().multiplyMatrices(Hl, rig.group.matrix), SwInv = new THREE.Matrix4().copy(Sw).invert();
+    const Rf = new THREE.Matrix4().multiplyMatrices(Sw, FLIP).multiply(SwInv);
+    const Hr = new THREE.Matrix4().multiplyMatrices(Rf, Hl).multiply(FLIP);
+    const T0 = new THREE.Vector3(), Qh = new THREE.Quaternion();
+    Hr.decompose(T0, Qh, _s);
+    const axis = new THREE.Vector3(0, 1, 0).transformDirection(Sw);       // along the blade, hilt to tip
+    // how far up the hilt the right hand can get: the farthest point on the hilt line within the arm's
+    // reach of the shoulder, so the hand slides smoothly as the reach changes (never closer than a fist)
+    const S = new THREE.Vector3().setFromMatrixPosition(G.RightArm.matrixWorld);
+    const reach = this.armReach('Right') * 0.97, T = new THREE.Vector3();
+    const u = new THREE.Vector3().subVectors(T0, S), ua = u.dot(axis), disc = ua * ua - u.lengthSq() + reach * reach;
+    const gap = THREE.MathUtils.clamp(disc > 0 ? -ua + Math.sqrt(disc) : 0, rig.gap * 0.4, rig.gap);
+    T.copy(T0).addScaledVector(axis, gap);
+    this.solveArm('Right', T, Qh, w, -1);
+  }
+
+  armReach(side) {
+    const G = this.g, a = G[side + 'Arm'], f = G[side + 'ForeArm'], h = G[side + 'Hand'];
+    return _v.setFromMatrixPosition(a.matrixWorld).distanceTo(_p.setFromMatrixPosition(f.matrixWorld)) + _p.distanceTo(_s.setFromMatrixPosition(h.matrixWorld));
+  }
+
+  // two-bone solve: put the wrist at T (as near as the arm reaches) with the hand turned to Qh. The
+  // elbow goes on the side `out` (+1 left, -1 right) and down: how a person's elbows hang.
+  solveArm(side, T, Qh, w, out) {
+    const G = this.g, arm = G[side + 'Arm'], fore = G[side + 'ForeArm'], hand = G[side + 'Hand'];
+    const S = new THREE.Vector3().setFromMatrixPosition(arm.matrixWorld);
+    const E = new THREE.Vector3().setFromMatrixPosition(fore.matrixWorld);
+    const Wr = new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld);
+    const L1 = S.distanceTo(E), L2 = E.distanceTo(Wr);
+    const to = new THREE.Vector3().subVectors(T, S), d = THREE.MathUtils.clamp(to.length(), Math.abs(L1 - L2) + 1e-3, (L1 + L2) * 0.999);
+    to.normalize();
+    const pole = new THREE.Vector3(0.55 * out, -1, -0.3).transformDirection(this.scene.matrixWorld);
+    pole.addScaledVector(to, -pole.dot(to)).normalize();
+    const a = (L1 * L1 - L2 * L2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, L1 * L1 - a * a));
+    const E2 = S.clone().addScaledVector(to, a).addScaledVector(pole, h);
+    // world rotations: swing the upper arm onto S->E2, then the forearm onto E2->T; the hand takes Qh
+    const par = arm.parent, qp = new THREE.Quaternion(), qa = new THREE.Quaternion(), qf = new THREE.Quaternion();
+    par.matrixWorld.decompose(_p, qp, _s); arm.matrixWorld.decompose(_p, qa, _s); fore.matrixWorld.decompose(_p, qf, _s);
+    const d1 = new THREE.Quaternion().setFromUnitVectors(_v.subVectors(E, S).normalize(), new THREE.Vector3().subVectors(E2, S).normalize());
+    const qa2 = d1.clone().multiply(qa), qf1 = d1.clone().multiply(qf);
+    const v2 = new THREE.Vector3().subVectors(Wr, E).applyQuaternion(d1).normalize();
+    const d2 = new THREE.Quaternion().setFromUnitVectors(v2, new THREE.Vector3().subVectors(T, E2).normalize());
+    const qf2 = d2.multiply(qf1);
+    arm.quaternion.slerp(qp.clone().invert().multiply(qa2), w);
+    fore.quaternion.slerp(qa2.clone().invert().multiply(qf2), w);
+    hand.quaternion.slerp(qf2.clone().invert().multiply(Qh), w);
   }
 
   // ---------------------------------------------------------------- body capsules (cloth + hitboxes)

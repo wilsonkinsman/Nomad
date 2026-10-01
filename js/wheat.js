@@ -40,6 +40,7 @@ export class Wheat {
     this.shared = {
       uHeightTex: { value: tex.height }, uZoneTex: { value: tex.zone }, uPathTex: { value: tex.path },
       uTrample: game.trample.uniform, uTrampleRect: { value: game.trample.rect },
+      uCut: game.cut.uniform, uCutSize: game.cut.sizeUniform,
       uPlayer: { value: new THREE.Vector3() }, uCenter: { value: new THREE.Vector2() },
       ...game.wind.uniforms,
     };
@@ -69,8 +70,8 @@ export class Wheat {
           .replace('#include <common>', `#include <common>
             ${GLSL_WORLD} ${GLSL_WIND} ${GLSL_NOISE} ${GLSL_TRAMPLE}
             attribute float part;
-            uniform int uGrid; uniform float uSize, uSpacing, uNear, uFar, uWidth, uEar; uniform vec2 uCenter; uniform vec3 uPlayer;
-            varying float vT; varying float vPart; varying vec3 vTint;`)
+            uniform int uGrid; uniform float uSize, uSpacing, uNear, uFar, uWidth, uEar, uCutSize; uniform vec2 uCenter; uniform vec3 uPlayer; uniform sampler2D uCut;
+            varying float vT; varying float vPart; varying float vCut; varying vec3 vTint;`)
           .replace('#include <beginnormal_vertex>', `
             int gid = gl_InstanceID;
             vec2 cell = vec2(float(gid % uGrid), float(gid / uGrid));
@@ -86,6 +87,9 @@ export class Wheat {
             float k = clamp((dens * fade - r3 * 0.35) * 5.0, 0.0, 1.0);
             float field = nNoise(wxz * 0.09);
             float hgt = mix(0.95, 1.25, r1) * (0.85 + 0.3 * field) * mix(0.75, 1.0, smoothstep(0.35, 0.8, zn.g)) * k;
+            // cut: the stalks are lopped to stubble, and grow back slower than grass does
+            float cutK = smoothstep(0.02, 0.85, texture(uCut, fract(wxz / uCutSize)).r + (r3 - 0.5) * 0.25);
+            hgt *= 1.0 - 0.84 * cutK;
             float t = position.y;
             float yaw = r2 * 6.2831;
             // ears nod away from the stalk's lean; leaves point sideways
@@ -100,6 +104,7 @@ export class Wheat {
             vec2 toP = wxz - uPlayer.xz; float pd = length(toP);
             float push = (1.0 - smoothstep(0.2, 0.85, pd)) * step(abs(uPlayer.y - worldHeight(wxz)), 1.0);
             bend += toP / max(pd, 1e-3) * push * 1.1;
+            bend *= 1.0 - 0.7 * cutK;
             float bl = length(bend); vec2 bd = bend / max(bl, 1e-4);
             // stiff stems: bending grows with the square of height
             float th = min(bl, 1.45) * t * t * 1.25;
@@ -121,13 +126,14 @@ export class Wheat {
               spine += (side * 0.0 + vec3(fdir.x, 0.0, fdir.y) * 0.18 * lt + up * -0.05 * lt * lt) * hgt;
             }
             w *= step(0.001, k);
+            if (pa > 0.5 && pa < 2.5) w *= smoothstep(0.55, 0.2, cutK);     // the ears go with the cut stalk
             vec3 bladeP = spine + side * position.x * w;
             vec3 objectNormal = normalize(cross(side, tang) + up * 0.3 + side * position.x * 1.2);
-            vT = t; vPart = pa;
+            vT = t; vPart = pa; vCut = cutK;
             vTint = vec3(r1, field, smoothstep(0.35, 0.8, zn.g));`)
           .replace('#include <begin_vertex>', 'vec3 transformed = bladeP;');
         s.fragmentShader = s.fragmentShader
-          .replace('#include <common>', '#include <common>\nvarying float vT; varying float vPart; varying vec3 vTint;')
+          .replace('#include <common>', '#include <common>\nvarying float vT; varying float vPart; varying float vCut; varying vec3 vTint;')
           .replace('#include <map_fragment>', `
             vec3 straw = mix(vec3(0.16, 0.12, 0.04), vec3(0.52, 0.38, 0.13), smoothstep(0.0, 0.7, vT));
             vec3 ear = vec3(0.6, 0.44, 0.16) * mix(0.8, 1.15, vTint.x);
@@ -136,6 +142,7 @@ export class Wheat {
             if (vPart > 2.5) c = mix(straw, green, 0.4);
             c = mix(c, green, (1.0 - vTint.z) * 0.35 * (1.0 - step(0.5, vPart)));
             c *= mix(0.85, 1.12, vTint.y);
+            c = mix(c, vec3(0.7, 0.56, 0.26) * mix(0.85, 1.1, vTint.x), vCut * 0.5);     // pale cut straw
             diffuseColor.rgb = c * mix(0.4, 1.0, smoothstep(0.0, 0.45, vT));`);
         addTranslucency(s, '0.8 * smoothstep(0.2, 0.9, vT)');
       };

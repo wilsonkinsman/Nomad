@@ -214,6 +214,7 @@ export class Animator {
     }
     out.hipsX = lerp(L.hipsX, O.hipsX, w); out.hipsY = lerp(L.hipsY, O.hipsY, w); out.hipsZ = lerp(L.hipsZ, O.hipsZ, w);
     out.pitch = lerp(L.pitch, O.pitch, w); out.roll = lerp(L.roll, O.roll, w); out.pivotY = lerp(L.pivotY, O.pivotY, w);
+    out.grip = 0; out.sp = out.sa = null;
     if (P.attack && P.attack.w > 0.001 && w < 0.5) this.attackLayer(out, P.attack, dt);
     else { this._atkKind = null; this._atkLast = null; this._atkOff = null; this._atkVel = null; }   // layer is off: nothing stale to fade from
     return out;
@@ -239,6 +240,8 @@ export class Animator {
       const r = out.bones[k]; if (!r) continue;
       for (let i = 0; i < 3; i++) r[i] = lerp(r[i], val(k, i), wt);
     }
+    out.grip = (pose.grip ? pose.grip[0] : 0) * wt;     // how much both hands are on the hilt (a two-handed hold)
+    if (out.grip > 0.002 && pose.sp && pose.sa) { out.sp = pose.sp; out.sa = pose.sa; }     // and where the sword is, in the chest's frame
     // legs: planted in a stance that suits the move (only when he is not walking)
     const st = pose.stance ? [val('stance', 0), val('stance', 1), val('stance', 2)] : null, wl = wt * (A.legs ?? 1);
     if (st && wl > 0.001) {

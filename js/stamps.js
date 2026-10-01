@@ -6,6 +6,7 @@ import * as THREE from 'three';
 
 const V = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 const MAX = 24;
+const CUT_MAX = 48;
 
 const FRAG = {
   veg: `
@@ -56,6 +57,74 @@ const FRAG = {
       gl_FragColor = p;
     }`,
 };
+
+// Where a blade has passed through grass and wheat: one value per texel, 1 is freshly cut down to
+// stubble and 0 is uncut. It falls back toward 0 as the stalks grow again (GROW_TIME seconds from
+// stubble to full height). The map wraps around the world every SIZE metres, so it stays sharp (SIZE /
+// RES, about 12 cm a texel) wherever the player is: the grass and wheat only draw within 46 m of the
+// camera, so two copies of one cut are never in view together.
+// The regrowth is applied in coarse ticks, not every frame: the texture is half-float, and a single
+// frame's worth of regrowth is smaller than the smallest step it can hold near 1.
+const CUT = `
+  uniform sampler2D tPrev; uniform float uSize, uDecay; uniform int uCount; uniform vec4 uS[${CUT_MAX}]; varying vec2 vUv;
+  void main(){
+    vec4 p = texture2D(tPrev, vUv);
+    vec2 w = vUv * uSize;
+    p.r = max(0.0, p.r - uDecay);
+    for (int i = 0; i < ${CUT_MAX}; i++) {
+      if (i >= uCount) break;
+      vec4 s = uS[i]; vec2 d = w - s.xy; d -= uSize * floor(d / uSize + 0.5);
+      float f = (1.0 - smoothstep(s.z * 0.6, s.z, length(d))) * s.w;
+      p.r = max(p.r, f);
+    }
+    gl_FragColor = p;
+  }`;
+
+export class CutField {
+  constructor(renderer, { res = 1024, size = 128, growTime = 90 } = {}) {
+    this.r = renderer; this.size = size; this.res = res; this.growTime = growTime;
+    const opts = { type: THREE.HalfFloatType, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, wrapS: THREE.RepeatWrapping, wrapT: THREE.RepeatWrapping };
+    this.a = new THREE.WebGLRenderTarget(res, res, opts);
+    this.b = new THREE.WebGLRenderTarget(res, res, opts);
+    this.S = Array.from({ length: CUT_MAX }, () => new THREE.Vector4());
+    this.count = 0; this.acc = 0;
+    this.mat = new THREE.ShaderMaterial({
+      uniforms: { tPrev: { value: null }, uSize: { value: size }, uDecay: { value: 0 }, uCount: { value: 0 }, uS: { value: this.S } },
+      vertexShader: V, fragmentShader: CUT, depthTest: false, depthWrite: false,
+    });
+    this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.mat);
+    this.quad.frustumCulled = false;
+    this.cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const old = renderer.getRenderTarget(), cc = renderer.getClearColor(new THREE.Color()), ca = renderer.getClearAlpha();
+    renderer.setClearColor(0x000000, 0);
+    for (const t of [this.a, this.b]) { renderer.setRenderTarget(t); renderer.clear(); }
+    renderer.setRenderTarget(old); renderer.setClearColor(cc, ca);
+    this.uniform = { value: this.a.texture };
+    this.sizeUniform = { value: size };
+  }
+
+  // one disc of cut stalks at (x, z): radius in metres, strength 0..1
+  stamp(x, z, r, strength = 1) {
+    if (this.count >= CUT_MAX) return false;
+    this.S[this.count++].set(x, z, r, strength);
+    return true;
+  }
+
+  update(dt) {
+    this.acc += dt;
+    let decay = 0;
+    if (this.acc >= 0.25) { decay = this.acc / this.growTime; this.acc = 0; }
+    if (!this.count && !decay) return;
+    this.mat.uniforms.tPrev.value = this.a.texture;
+    this.mat.uniforms.uDecay.value = decay;
+    this.mat.uniforms.uCount.value = this.count;
+    const old = this.r.getRenderTarget();
+    this.r.setRenderTarget(this.b); this.r.render(this.quad, this.cam); this.r.setRenderTarget(old);
+    [this.a, this.b] = [this.b, this.a];
+    this.uniform.value = this.a.texture;
+    this.count = 0;
+  }
+}
 
 export class StampField {
   constructor(renderer, { kind, res, minX, minZ, size, refill = 0 }) {

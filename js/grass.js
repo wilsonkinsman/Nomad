@@ -41,6 +41,7 @@ export class Grass {
     this.shared = {
       uHeightTex: { value: tex.height }, uZoneTex: { value: tex.zone }, uPathTex: { value: tex.path },
       uTrample: game.trample.uniform, uTrampleRect: { value: game.trample.rect },
+      uCut: game.cut.uniform, uCutSize: game.cut.sizeUniform,       // where the blade has cut (and how recently)
       uPlayer: { value: new THREE.Vector3() }, uCenter: { value: new THREE.Vector2() },
       ...game.wind.uniforms,
     };
@@ -71,8 +72,8 @@ export class Grass {
         s.vertexShader = s.vertexShader
           .replace('#include <common>', `#include <common>
             ${GLSL_WORLD} ${GLSL_WIND} ${GLSL_NOISE} ${GLSL_TRAMPLE}
-            uniform int uGrid; uniform float uSize, uSpacing, uNear, uFar, uWidth; uniform vec2 uCenter; uniform vec3 uPlayer;
-            varying float vT; varying vec3 vTint;`)
+            uniform int uGrid; uniform float uSize, uSpacing, uNear, uFar, uWidth, uCutSize; uniform vec2 uCenter; uniform vec3 uPlayer; uniform sampler2D uCut;
+            varying float vT, vCut; varying vec3 vTint;`)
           .replace('#include <beginnormal_vertex>', `
             int gid = gl_InstanceID;
             vec2 cell = vec2(float(gid % uGrid), float(gid / uGrid));
@@ -89,6 +90,9 @@ export class Grass {
             float k = clamp((dens * fade - r3 * 0.55) * 4.0, 0.0, 1.0);
             float patchN = nNoise(wxz * 0.13);
             float hgt = mix(0.22, 0.6, r1) * (0.6 + 0.8 * patchN) * k * (1.0 + pt.a * 0.3);
+            // cut: stubble stays low for a while and then grows back, each blade a little out of step
+            float cutK = smoothstep(0.04, 0.6, texture(uCut, fract(wxz / uCutSize)).r + (r3 - 0.5) * 0.3);
+            hgt *= 1.0 - 0.88 * cutK;
             float wid = uWidth * mix(0.7, 1.35, r2) * step(0.001, k);
             float yaw = r2 * 6.2831;
             vec2 fdir = vec2(sin(yaw), cos(yaw)), sdir = vec2(fdir.y, -fdir.x);
@@ -102,15 +106,16 @@ export class Grass {
             vec2 toP = wxz - uPlayer.xz; float pd = length(toP);
             float push = (1.0 - smoothstep(0.12, 0.6, pd)) * step(abs(uPlayer.y - worldHeight(wxz)), 0.6);
             bend += toP / max(pd, 1e-3) * push * 1.3;
+            bend *= 1.0 - 0.7 * cutK;                 // stubble stands stiff
             float bl = length(bend); vec2 bd = bend / max(bl, 1e-4);
             float th = min(bl, 1.5) * (0.3 + 0.7 * t);
             vec3 base = vec3(wxz.x, worldHeight(wxz) - 0.02, wxz.y);
             vec3 up = vec3(0.0, 1.0, 0.0), b3 = vec3(bd.x, 0.0, bd.y), s3 = vec3(sdir.x, 0.0, sdir.y);
-            vec3 bladeP = base + up * (hgt * t * cos(th)) + b3 * (hgt * t * sin(th)) + s3 * position.x * wid * (1.0 - t * 0.88);
+            vec3 bladeP = base + up * (hgt * t * cos(th)) + b3 * (hgt * t * sin(th)) + s3 * position.x * wid * (1.0 - t * mix(0.88, 0.3, cutK));
             vec3 tang = normalize(up * cos(th) + b3 * sin(th));
             vec3 objectNormal = normalize(cross(s3, tang));
             objectNormal = normalize(objectNormal + s3 * position.x * 1.4 + up * 0.35);
-            vT = t;
+            vT = t; vCut = cutK;
             float dry = smoothstep(0.35, 0.8, pt.a + (r3 - 0.5) * 0.4);
             vTint = vec3(r1, dry, patchN);
             #ifdef USE_TANGENT
@@ -118,12 +123,13 @@ export class Grass {
             #endif`)
           .replace('#include <begin_vertex>', 'vec3 transformed = bladeP;');
         s.fragmentShader = s.fragmentShader
-          .replace('#include <common>', '#include <common>\nvarying float vT; varying vec3 vTint;')
+          .replace('#include <common>', '#include <common>\nvarying float vT, vCut; varying vec3 vTint;')
           .replace('#include <map_fragment>', `
             vec3 lush = mix(vec3(0.035, 0.07, 0.014), vec3(0.13, 0.2, 0.045), vT);
             vec3 dryc = mix(vec3(0.07, 0.06, 0.02), vec3(0.3, 0.25, 0.1), vT);
             vec3 gc = mix(lush, dryc, vTint.y * 0.7);
             gc *= mix(0.75, 1.2, vTint.x) * mix(0.85, 1.1, vTint.z);
+            gc = mix(gc, gc * vec3(1.4, 1.3, 0.85) + vec3(0.025, 0.03, 0.0), vCut * 0.75);     // the cut ends show pale
             diffuseColor.rgb = gc * mix(0.45, 1.0, smoothstep(0.0, 0.5, vT));`);
         addTranslucency(s, '0.55 * vT');
       };

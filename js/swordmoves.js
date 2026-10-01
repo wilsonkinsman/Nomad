@@ -3,47 +3,63 @@
 // +x on a hanging arm swings it back, forward is negative; +z raises the left arm sideways, -z the
 // right; +y on the hips and spine turns toward his left). Only the bones a move names are touched.
 // `stance` is [left foot, right foot, hip drop] in metres, feet measured forward of the hips.
-// The sword is in his LEFT hand: the hilt rides over his left shoulder.
+// The sword is drawn from over his LEFT shoulder, with that hand.
+//
+// While `grip` is 1 he holds the sword in both hands, and the arms are not keyed at all: `sp` and `sa`
+// say where the sword is, in the frame of his chest (x left, y up, z forward, metres from the middle of
+// his back), and both arms are solved to the hilt (see AtsuModel.gripIK).
+//   sp  [x, y, z]            the left fist, the lower hand, at the pommel end of the hilt
+//   sa  [yaw, tilt, roll]    yaw turns the blade to his left; tilt 0 is the blade straight up with its edge
+//                            forward, and the blade leans forward as tilt grows (about 1.57 is level,
+//                            above 2 points down); roll turns the blade about its own length
+// His arms are short (the wrists reach about 0.39 m from the shoulders), so the hands stay close to the
+// chest and the blade turns about them; the torso and the legs do the swinging.
 const R = (x, y = 0, z = 0) => [x, y, z];
 
-// the pose he returns to between swings: blade out, held low in front
+// the pose he returns to between swings: blade out, held in front of his belly, tip toward his throat height
 const READY = {
-  hips: R(0.08, 0.15), spine: R(0.12, 0.1), chest: R(0.1, 0.1), neck: R(-0.1), head: R(-0.05),
-  shoulder_L: R(0, 0, 0.05), upperarm_L: R(-1.0, 0, 0.45), forearm_L: R(-1.2), hand_L: R(0.4),
-  shoulder_R: R(0, 0, 0), upperarm_R: R(-0.35, 0, -0.45), forearm_R: R(-0.8), hand_R: R(0),
-  stance: [0.08, -0.14, 0.04],
+  hips: R(0.06), spine: R(0.1), chest: R(0.08), neck: R(-0.1), head: R(-0.05),
+  stance: [0.1, -0.14, 0.05], grip: R(1), sp: R(0, -0.1, 0.2), sa: R(0, 1.15, 0),
 };
 
 export const POSES = { READY };
 
 export const MOVE_KEYS = {
-  // reach over the left shoulder, pull the blade out and across in one cut, left to right
+  // reach over the left shoulder, pull the blade out, bring the right hand to it and sweep it low across
+  // the front, left to right, the way a scythe goes through grass
   draw: [
-    [0.00, { upperarm_L: R(0.1, 0, 0.12), forearm_L: R(-0.3), hand_L: R(0), spine: R(0), chest: R(0), hips: R(0), stance: [0, 0, 0] }],
-    [0.18, { upperarm_L: R(-3.3, 0, 0.75), forearm_L: R(-0.6), hand_L: R(0), spine: R(-0.1, 0.2), chest: R(-0.1, 0.5), hips: R(0, 0.25), upperarm_R: R(0.1, 0, -0.2), forearm_R: R(-0.5), stance: [0.05, -0.05, 0.03] }],
-    [0.30, { upperarm_L: R(-3.5, 0, 1.0), forearm_L: R(-0.4), hand_L: R(0.2), spine: R(-0.15, 0.3), chest: R(-0.15, 0.6), hips: R(0, 0.4), stance: [0.1, -0.12, 0.06] }],
-    [0.40, { upperarm_L: R(0, 0.9, 1.4), forearm_L: R(-0.2), hand_L: R(0.1), spine: R(0.05, 0.4), chest: R(0, 0.7), hips: R(0, 0.6), upperarm_R: R(-0.2, 0, -0.5), stance: [0.18, -0.2, 0.1] }],
-    [0.60, { upperarm_L: R(0, -2.6, 1.3), forearm_L: R(-0.15), hand_L: R(0.1), spine: R(0.1, -0.4), chest: R(0.05, -0.6), hips: R(0, -0.7), upperarm_R: R(-0.5, 0, -0.4), stance: [0.28, -0.26, 0.1] }],
-    [0.84, READY],
+    [0.00, { upperarm_L: R(0.1, 0, 0.12), forearm_L: R(-0.3), hand_L: R(0), spine: R(0), chest: R(0), hips: R(0), stance: [0, 0, 0], grip: R(0) }],
+    [0.18, { upperarm_L: R(-3.3, 0, 0.75), forearm_L: R(-0.6), hand_L: R(0), spine: R(-0.1, 0.2), chest: R(-0.1, 0.5), hips: R(0, 0.25), upperarm_R: R(0.1, 0, -0.2), forearm_R: R(-0.5), stance: [0.05, -0.05, 0.03], grip: R(0) }],
+    [0.30, { upperarm_L: R(-3.5, 0, 1.0), forearm_L: R(-0.4), hand_L: R(0.2), spine: R(-0.15, 0.3), chest: R(-0.15, 0.6), hips: R(0, 0.4), stance: [0.1, -0.12, 0.06], grip: R(0), sp: R(0.12, 0.1, 0.16), sa: R(0.4, 1.9, 0) }],
+    [0.42, { upperarm_L: R(0, 0.9, 1.4), forearm_L: R(-0.2), hand_L: R(0.1), spine: R(0.1, 0.3), chest: R(0.1, 0.5), hips: R(0.04, 0.4), upperarm_R: R(-0.2, 0, -0.5), stance: [0.2, -0.22, 0.1], grip: R(1), sp: R(0.1, -0.02, 0.2), sa: R(0.2, 1.95, 0) }],
+    [0.50, { spine: R(0.18, 0.0), chest: R(0.2, 0.0), hips: R(0.08, 0.0), stance: [0.3, -0.28, 0.14], grip: R(1), sp: R(0.0, -0.06, 0.22), sa: R(0.0, 2.0, 0) }],
+    [0.58, { spine: R(0.16, -0.3), chest: R(0.16, -0.35), hips: R(0.08, -0.35), stance: [0.32, -0.3, 0.14], grip: R(1), sp: R(-0.1, -0.06, 0.2), sa: R(-0.3, 1.95, 0) }],
+    [0.68, { spine: R(0.14, -0.34), chest: R(0.14, -0.4), hips: R(0.06, -0.4), stance: [0.3, -0.3, 0.13], grip: R(1), sp: R(-0.12, -0.04, 0.2), sa: R(-0.45, 1.9, 0) }],
+    [0.95, READY],
   ],
-  // raise the blade over his head and chop straight down
+  // raise the blade over his head, hold it a breath, then drop everything into the chop: the hips sink,
+  // the chest folds over and the blade goes into the ground
   overhead: [
     [0.00, READY],
-    [0.18, { upperarm_L: R(-3.0, 0, 0.35), forearm_L: R(-1.5), hand_L: R(0.2), spine: R(-0.1), chest: R(-0.25), hips: R(0, 0.1), neck: R(0.1), upperarm_R: R(-2.6, 0, -0.35), forearm_R: R(-1.3), stance: [0.1, -0.15, 0.03] }],
-    [0.32, { upperarm_L: R(-3.3, 0, 0.3), forearm_L: R(-1.8), hand_L: R(0.3), spine: R(-0.15), chest: R(-0.35), stance: [0.14, -0.2, 0.02] }],
-    [0.46, { upperarm_L: R(-1.35, 0, 0.12), forearm_L: R(-0.2), hand_L: R(0.5), spine: R(0.3), chest: R(0.4), hips: R(0.1), neck: R(-0.2), upperarm_R: R(-1.3, 0, -0.2), forearm_R: R(-0.3), stance: [0.35, -0.28, 0.14] }],
-    [0.70, READY],
+    [0.12, { spine: R(0.05), chest: R(0.0), hips: R(0.02), stance: [0.1, -0.15, 0.09], grip: R(1), sp: R(0, 0.12, 0.2), sa: R(0, 0.5, 0) }],
+    [0.30, { spine: R(-0.2), chest: R(-0.35), hips: R(-0.05), neck: R(0.12), head: R(0.1), stance: [0.1, -0.2, 0.02], grip: R(1), sp: R(0, 0.36, 0.12), sa: R(0, -0.4, 0) }],
+    [0.38, { spine: R(-0.24), chest: R(-0.4), hips: R(-0.07), neck: R(0.14), stance: [0.1, -0.22, 0.0], grip: R(1), sp: R(0, 0.38, 0.1), sa: R(0, -0.5, 0) }],
+    [0.52, { spine: R(0.26), chest: R(0.36), hips: R(0.1), neck: R(-0.25), head: R(-0.1), stance: [0.38, -0.3, 0.17], grip: R(1), sp: R(0, -0.1, 0.24), sa: R(0, 1.95, 0) }],
+    [0.60, { spine: R(0.3), chest: R(0.4), hips: R(0.12), neck: R(-0.28), stance: [0.38, -0.3, 0.19], grip: R(1), sp: R(0, -0.14, 0.22), sa: R(0, 2.02, 0) }],
+    [0.84, READY],
   ],
-  // draw the blade back to the hip, then drive it straight out
+  // draw the blade back to the hip, hold, then drive it straight out
   thrust: [
     [0.00, READY],
-    [0.18, { upperarm_L: R(-0.6, 0, 0.5), forearm_L: R(-1.9), hand_L: R(0.2), spine: R(0.05, 0.3), chest: R(0, 0.5), hips: R(0, 0.4), upperarm_R: R(-1.0, 0, -0.5), forearm_R: R(-0.7), stance: [0.05, -0.2, 0.08] }],
-    [0.34, { upperarm_L: R(-1.5, 0, 0.12), forearm_L: R(-0.1), hand_L: R(0.8), spine: R(0.25, -0.2), chest: R(0.25, -0.35), hips: R(0.1, -0.35), upperarm_R: R(0.2, 0, -0.5), forearm_R: R(-0.4), stance: [0.45, -0.3, 0.18] }],
-    [0.66, READY],
+    [0.22, { spine: R(0.06, 0.15), chest: R(0.0, 0.25), hips: R(0.02, 0.2), stance: [0.05, -0.2, 0.09], grip: R(1), sp: R(0.05, -0.12, 0.08), sa: R(-0.5, 1.4, 0) }],
+    [0.30, { spine: R(0.08, 0.18), chest: R(0.02, 0.3), hips: R(0.02, 0.24), stance: [0.04, -0.21, 0.1], grip: R(1), sp: R(0.06, -0.13, 0.07), sa: R(-0.6, 1.38, 0) }],
+    [0.42, { spine: R(0.2, -0.1), chest: R(0.2, -0.15), hips: R(0.1, -0.15), stance: [0.48, -0.3, 0.19], grip: R(1), sp: R(-0.02, 0.0, 0.31), sa: R(0.6, 1.55, 0) }],
+    [0.74, READY],
   ],
   // return the blade to the sheath over the left shoulder
   sheathe: [
     [0.00, READY],
+    [0.16, { grip: R(0) }],
     [0.22, { upperarm_L: R(-3.3, 0, 0.8), forearm_L: R(-0.5), hand_L: R(0.1), spine: R(-0.1, 0.2), chest: R(-0.1, 0.5), hips: R(0, 0.25), stance: [0.05, -0.05, 0.03] }],
     [0.38, { upperarm_L: R(-3.4, 0, 0.9), forearm_L: R(-0.4), hand_L: R(0.1), spine: R(-0.1, 0.2), chest: R(-0.1, 0.5), hips: R(0, 0.25), stance: [0.03, -0.03, 0.02] }],
     [0.66, { upperarm_L: R(0.1, 0, 0.12), forearm_L: R(-0.3), hand_L: R(0), spine: R(0), chest: R(0), hips: R(0), stance: [0, 0, 0] }],

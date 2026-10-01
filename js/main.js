@@ -5,7 +5,7 @@ import { Sky } from './sky.js';
 import { Pipeline } from './post.js';
 import { buildTerrain, buildMountains } from './terrain.js';
 import { groundTextures, fabricTextures, leatherTextures, strawTextures, furTexture, leafAtlas, foliageAtlas, barkTextures, woodTextures, rockTextures, softSprite } from './textures.js';
-import { StampField } from './stamps.js';
+import { StampField, CutField } from './stamps.js';
 import { Grass } from './grass.js';
 import { Wheat } from './wheat.js';
 import { Snow } from './snow.js';
@@ -53,7 +53,7 @@ const rig = new CameraRig(camera);
 
 const game = {
   THREE, renderer, scene, camera, input, rig, settings,
-  state: 'loading', systems: [], time: 0, fade: 0,
+  state: 'loading', systems: [], time: 0, fade: 0, hitStop: 0,
   player: null, sky: null, post: null,
 };
 window.__nomad = game;
@@ -100,6 +100,7 @@ async function boot() {
   await progress(0.7, 'Growing the meadow…');
   game.trample = new StampField(renderer, { kind: 'veg', res: 512, minX: -128, minZ: -128, size: 256 });
   Object.assign(game.terrainExtra, { uTrample: game.trample.uniform, uTrampleRect: { value: game.trample.rect } });
+  game.cut = new CutField(renderer);          // where the sword has cut the grass and wheat, which then grows back
   game.particles = new Particles(game, softSprite());
   game.trees = new Trees(game, tx);
   game.props = new Props(game, tx);
@@ -258,6 +259,7 @@ function update(dt) {
   interact(dt);
   for (const s of game.systems) s.update?.(dt, game);
   game.trample.update(dt);
+  game.cut.update(dt);
   rig.update(dt, game.player, input, inMenu);
   game.sky.update(dt, game.player.pos);
   game.sky.followCamera(camera);
@@ -268,9 +270,11 @@ game.render = (dt = 0.016) => game.post.render(dt, game.fade);
 
 let last = performance.now();
 function loop(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  let dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (!game.paused) {
+    // a heavy hit stops the world for a breath: it crawls for a few frames, and the blow lands with weight
+    if (game.hitStop > 0) { game.hitStop -= dt; dt *= 0.1; }
     game.fade = Math.min(1, game.fade + dt * 0.5);
     update(dt);
     game.render(dt);

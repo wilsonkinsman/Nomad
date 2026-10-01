@@ -10,20 +10,22 @@
 //   cut       a wide fan around the front and both sides, reaching 1.45 m: things close to him
 //   overhead  a narrow box straight ahead, 1.6 m, that lands on the ground at the end of the chop
 //   thrust    a thin lane straight ahead, 2 m, longer than either of the others
-// Hits do what the swing would: lay grass and wheat over along the cut, scatter leaves, throw snow
+// Hits do what the swing would: the blade cuts the grass and wheat it passes through (they are lopped
+// to stubble along the blade's own path and grow back over a minute or two), scatter leaves, throw snow
 // and chaff, thud against trees and posts. Press H to see the three volumes.
 import * as THREE from 'three';
 import { groundY, surfaceAt } from './world.js';
 import { clamp, lerp, smoothstep, damp, dampAngle } from './util.js';
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4();
+const CUT_AT = [0.3, 0.5, 0.7, 0.88, 1.0];      // points along the blade (guard 0, tip 1) that cut
 
 // ---------------------------------------------------------------- the moves
 export const MOVES = {
   //            seconds   sword changes hands   active cut     can chain from    next       step forward (at s, m/s)
-  draw:     { dur: 0.84, swap: 0.24, hit: [0.42, 0.60], chain: 0.30, cancel: 0.64, next: 'overhead', lunge: [0.34, 1.7], swish: [0.40, 'cut'] },
-  overhead: { dur: 0.70, hit: [0.32, 0.46], chain: 0.20, cancel: 0.54, next: 'thrust', lunge: [0.26, 2.6], swish: [0.28, 'overhead'] },
-  thrust:   { dur: 0.66, hit: [0.26, 0.40], chain: 0.16, cancel: null, next: null, lunge: [0.20, 4.6], swish: [0.20, 'thrust'] },
+  draw:     { dur: 0.95, swap: 0.24, hit: [0.44, 0.60], chain: 0.40, cancel: 0.74, next: 'overhead', lunge: [0.36, 1.7], swish: [0.42, 'cut'] },
+  overhead: { dur: 0.84, hit: [0.44, 0.58], chain: 0.30, cancel: 0.66, next: 'thrust', lunge: [0.38, 2.6], swish: [0.40, 'overhead'] },
+  thrust:   { dur: 0.74, hit: [0.33, 0.45], chain: 0.30, cancel: null, next: null, lunge: [0.30, 4.6], swish: [0.30, 'thrust'] },
   sheathe:  { dur: 0.66, swap: 0.38, hit: null, chain: 0.34, cancel: null, next: null },
 };
 const COMBO_WINDOW = 0.65;      // seconds he waits, blade out, for the next press before sheathing
@@ -36,22 +38,26 @@ export const HIT = {
 };
 
 // ---------------------------------------------------------------- blade geometry
-function buildBlade(len, width = 0.056, thick = 0.012) {
-  const N = 28, curve = 0.045;
-  const pos = [], idx = [];
-  const prof = (w, t) => [[0, w / 2], [t / 2, w / 2 - w * 0.3], [t / 2, -w / 2], [-t / 2, -w / 2], [-t / 2, w / 2 - w * 0.3]];   // [x thickness, z width], edge at +z
+function buildBlade(len, width = 0.072, thick = 0.019) {
+  const N = 28, curve = 0.055;
+  const pos = [], col = [], idx = [];
+  // [x thickness, z width, shade], edge at +z. The bevel running from the edge up to the ridge line
+  // catches the light and the flats and the back are darker, so the blade reads as a blade from any angle.
+  const prof = (w, t) => [[0, w / 2, 1.0], [t / 2, w / 2 - w * 0.34, 0.8], [t / 2, -w / 2, 0.6], [-t / 2, -w / 2, 0.6], [-t / 2, w / 2 - w * 0.34, 0.8]];
   for (let i = 0; i <= N; i++) {
     const s = i / N, y = s * len;
-    const tip = s > 0.92 ? Math.max(0, 1 - (s - 0.92) / 0.08) : 1;
-    const w = width * (1 - 0.16 * s) * (0.15 + 0.85 * tip), t = thick * (1 - 0.3 * s) * tip;
-    for (const [px, pz] of prof(w, t)) pos.push(px, y, pz - curve * s * s);
+    const tip = s > 0.9 ? Math.max(0, 1 - (s - 0.9) / 0.1) : 1;
+    const w = width * (1 - 0.18 * s) * (0.12 + 0.88 * tip), t = thick * (1 - 0.35 * s) * tip;
+    for (const [px, pz, sh] of prof(w, t)) { pos.push(px, y, pz - curve * s * s); col.push(sh, sh, sh); }
   }
   for (let i = 0; i < N; i++) for (let k = 0; k < 5; k++) {
     const a = i * 5 + k, b = i * 5 + (k + 1) % 5, c = a + 5, d = b + 5;
     idx.push(a, c, b, b, c, d);
   }
   let g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
   g = g.toNonIndexed(); g.computeVertexNormals();
   return g;
 }
@@ -62,12 +68,13 @@ export class SwordRig {
     this.model = model;
     this.back = model.backSword;
     this.hand = model.g.LeftHand;
-    this.len = o.len ?? 0.80;
+    this.len = o.len ?? 0.74;
+    this.gap = o.gap ?? 0.17;                  // how far up the hilt the right hand holds, from the left
     this.group = new THREE.Group();            // origin at the guard, +Y toward the tip
     const hilt = model.hiltMesh;
     hilt.castShadow = true; hilt.receiveShadow = true; hilt.frustumCulled = false;
     this.group.add(hilt);
-    this.steel = new THREE.MeshStandardMaterial({ color: 0xcfd6dc, metalness: 0.92, roughness: 0.26, side: THREE.DoubleSide });
+    this.steel = new THREE.MeshStandardMaterial({ color: 0xe6edf2, metalness: 0.72, roughness: 0.3, vertexColors: true, side: THREE.DoubleSide });
     this.blade = new THREE.Mesh(buildBlade(this.len), this.steel);
     this.blade.castShadow = true; this.blade.frustumCulled = false;
     this.group.add(this.blade);
@@ -90,7 +97,7 @@ export class SwordRig {
     const hp = M.bindPos.get(hand), hq = M.bindW.get(hand);
     const mid = M.g.LeftHandMiddle1 ? M.bindPos.get(M.g.LeftHandMiddle1) : hp;
     const fist = hp.clone().lerp(mid, g.fistK ?? 0.6);
-    const at = g.at ?? 0.30;
+    const at = this.at = g.at ?? 0.34;      // the guard sits this far up the hilt from the fist
     const guard = fist.clone().addScaledVector(blade, at).add(new THREE.Vector3(...(g.shift || [0, 0, 0])));
     const hqi = hq.clone().invert();
     this.group.position.copy(guard).sub(hp).applyQuaternion(hqi);
@@ -161,6 +168,7 @@ export class Weapon {
     this.moveScale = 1; this.busy = false; this.faceLock = false;
     this.aim = 0; this.prevS = 0; this.struck = new Set(); this.lunged = false; this.swished = false;
     this.legs = 1; this._s = {};
+    this._bp = Array.from({ length: CUT_AT.length }, () => new THREE.Vector3()); this._bpOk = false;   // where the blade was last frame
     this.debug = null;
     game.scene.add(rig.trail.mesh);
   }
@@ -276,6 +284,7 @@ export class Weapon {
     const M = this.kind ? MOVES[this.kind] : null;
     const cutting = !!(M && M.hit && this.t >= M.hit[0] && this.t <= M.hit[1] + 0.04);
     this.rig.trail.update(dt, this.rig, this.rig.drawn && (cutting || (M && M.hit && this.t > M.hit[0] - 0.08 && this.t < M.hit[1] + 0.1)));
+    this.cutSweep(dt, M);
     if (M && M.hit && dt > 0 && !this.freeze) {
       const s = clamp((this.t - M.hit[0]) / (M.hit[1] - M.hit[0]), 0, 1);
       if (this.t >= M.hit[0] && this.t <= M.hit[1] + 1e-4) this.scan(this.kind, s);
@@ -349,11 +358,46 @@ export class Weapon {
     });
   }
 
+  // ---------------------------------------------------------------- the blade cuts what grows
+  // While a move is live, follow several points along the blade through the world and, wherever one is
+  // low enough to be among the stalks, cut a disc there. A fast swing moves a point further than a
+  // disc is wide in one frame, so each point is stepped from where it was to where it is.
+  cutSweep(dt, M) {
+    const G = this.game, rig = this.rig;
+    const live = !!(M && M.hit && rig.drawn && !this.freeze && dt > 0 && this.t >= M.hit[0] - 0.05 && this.t <= M.hit[1] + 0.12);
+    if (!live) { this._bpOk = false; return; }
+    for (let i = 0; i < CUT_AT.length; i++) {
+      const cur = rig.point(CUT_AT[i], _v), prev = this._bp[i];
+      if (!this._bpOk) prev.copy(cur);
+      const dx = cur.x - prev.x, dz = cur.z - prev.z, dy = cur.y - prev.y;
+      const steps = clamp(Math.ceil(Math.hypot(dx, dy, dz) / 0.12), 1, 8);
+      // the speed of the blade here, for the flying cuttings
+      const sp = Math.hypot(dx, dz) / dt, k = sp > 7 ? 7 / sp : 1, vx = dx / dt * k, vz = dz / dt * k;
+      for (let j = 1; j <= steps; j++) this.cutAt(prev.x + dx * j / steps, prev.y + dy * j / steps, prev.z + dz * j / steps, vx, vz, CUT_AT[i]);
+      prev.copy(cur);
+    }
+    this._bpOk = true;
+  }
+
+  // a point of the blade at (x, y, z): cut the stalks under it if it is within their height
+  cutAt(x, y, z, vx, vz, along) {
+    const G = this.game, s = surfaceAt(x, z, this._s), gy = groundY(x, z), h = y - gy;
+    const wheat = s.wheat > 0.35, grass = !wheat && s.grass > 0.3 && s.path < 0.6;
+    if (!wheat && !grass) return;
+    if (h > (wheat ? 1.15 : 0.8) || h < -0.3) return;
+    G.cut.stamp(x, z, 0.17 + 0.05 * along, 1);
+    if (Math.random() < 0.55) {
+      const up = clamp(h, 0.1, 0.7);
+      G.particles.emit(wheat ? 'seed' : 'grass', x, gy + up, z, vx * 0.3, 1.2 + Math.random(), vz * 0.3, 1.1, wheat ? 3 : 2);
+    }
+  }
+
   // ---------------------------------------------------------------- effects
   // the blade passes over a point on the ground heading (dx, dz)
   strike(x, z, r, dx, dz, power, kind) {
     const G = this.game, s = surfaceAt(x, z, this._s), y = groundY(x, z), pz = G.particles;
-    G.trample.stamp(x, z, r, clamp(0.55 + power * 0.4, 0, 1), dx, dz, 1);
+    // grass and wheat are cut where the blade really is (cutSweep), not pushed flat; other ground is shoved
+    if (s.grass < 0.3 && s.wheat < 0.3) G.trample.stamp(x, z, r, clamp(0.55 + power * 0.4, 0, 1), dx, dz, 1);
     if (s.leaves > 0.15) G.leaves.kick(x, z, r + 0.3, 0.8 + power, dx * (kind === 'thrust' ? 9 : 6), dz * (kind === 'thrust' ? 9 : 6));
     if (Math.random() < 0.7) {
       if (s.wheat > 0.35) pz.emit('seed', x, y + 0.55, z, dx * 3, 1.5, dz * 3, 1.2, kind === 'cut' ? 4 : 2);
@@ -367,11 +411,13 @@ export class Weapon {
   impact(F, x, z) {
     const G = this.game, s = surfaceAt(x, z, this._s), y = groundY(x, z), pz = G.particles;
     const p = new THREE.Vector3(x, y, z);
+    // the chop lands on the ground: whatever grows there is cut down along the blade and where it struck
     for (let a = 0.35; a <= 1.7; a += 0.3) {
       const [px, pzz] = this.at(F, a, 0);
-      G.trample.stamp(px, pzz, 0.55, 1, F.fx, F.fz, 1);
+      const sp = surfaceAt(px, pzz, this._s);
+      if (sp.grass > 0.3 || sp.wheat > 0.3) G.cut.stamp(px, pzz, 0.34, 1); else G.trample.stamp(px, pzz, 0.55, 1, F.fx, F.fz, 1);
     }
-    G.trample.stamp(x, z, 0.9, 1, F.fx * 0.4, F.fz * 0.4, 1);
+    if (s.grass > 0.3 || s.wheat > 0.3) G.cut.stamp(x, z, 0.55, 1); else G.trample.stamp(x, z, 0.9, 1, F.fx * 0.4, F.fz * 0.4, 1);
     G.snow.onImpact(p, this.aim, 'land');
     G.snow.stamp(x, z, 0.5, 0.45, this.aim, 1, 1);
     G.leaves.onImpact(p, 'roll', 8);
@@ -382,6 +428,7 @@ export class Weapon {
     pz.emit('dust', x, y + 0.05, z, F.fx * 1.2, 1.0, F.fz * 1.2, 1.4, 12);
     G.audio?.sword('slam');
     G.rig.shake = Math.max(G.rig.shake, 0.32);
+    G.hitStop = Math.max(G.hitStop, 0.09);
   }
 
   // the point of the thrust
@@ -410,6 +457,7 @@ export class Weapon {
         G.particles.emit('seed', px, y, pz, -dx / dist, 1.0, -dz / dist, 1.2, 5);
         G.audio?.sword('hit');
         G.rig.shake = Math.max(G.rig.shake, 0.12);
+        G.hitStop = Math.max(G.hitStop, 0.06);
       }
     }
   }
