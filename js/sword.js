@@ -27,7 +27,12 @@ export const MOVES = {
   overhead: { dur: 0.84, hit: [0.44, 0.58], chain: 0.30, cancel: 0.66, next: 'thrust', lunge: [0.38, 2.6], swish: [0.40, 'overhead'] },
   thrust:   { dur: 0.74, hit: [0.33, 0.45], chain: 0.30, cancel: null, next: null, lunge: [0.30, 4.6], swish: [0.30, 'thrust'] },
   sheathe:  { dur: 0.66, swap: 0.38, hit: null, chain: 0.34, cancel: null, next: null },
+  // F: the blade laid flat across his chest. Anything that lands while it is up (PARRY) is turned aside.
+  parry:    { dur: 0.62, swap: 0.05, hit: null, chain: 0.28, cancel: 0.5, next: 'overhead' },
 };
+export const PARRY_WINDOW = [0.04, 0.34];     // seconds into the move that a blow is turned aside
+const PARRY_COOLDOWN = 0.22;
+const HURT = { draw: 14, overhead: 28, thrust: 20 };     // what each move does to something that can be hurt
 const COMBO_WINDOW = 0.65;      // seconds he waits, blade out, for the next press before sheathing
 
 // the three hitboxes, in his frame: forward (a), left (b), metres; angles in radians
@@ -113,6 +118,37 @@ export class SwordRig {
 
   // blade points in world space (origin of the trail ribbon)
   point(k, out) { return this.group.localToWorld(out.set(0, this.len * k, 0)); }
+
+  // A glint runs down the blade: a bright star that slides from the guard to the tip while the steel
+  // itself flares. `power` 1 is the ring of a raised guard, 2 a blow turned aside.
+  glint(power = 1) { this.glintT = 0; this.glintPow = power; }
+  updateGlint(dt, camera) {
+    if (!this.star) {
+      const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+      const rad = g.createRadialGradient(64, 64, 0, 64, 64, 64); rad.addColorStop(0, 'rgba(255,255,255,1)'); rad.addColorStop(0.12, 'rgba(255,248,225,0.85)'); rad.addColorStop(0.4, 'rgba(255,240,200,0.14)'); rad.addColorStop(1, 'rgba(255,240,200,0)');
+      g.fillStyle = rad; g.fillRect(0, 0, 128, 128);
+      for (const [a, len, w] of [[0, 62, 3.2], [Math.PI / 2, 62, 3.2], [Math.PI / 4, 34, 1.6], [-Math.PI / 4, 34, 1.6]]) {
+        g.save(); g.translate(64, 64); g.rotate(a);
+        const l = g.createLinearGradient(-len, 0, len, 0); l.addColorStop(0, 'rgba(255,255,255,0)'); l.addColorStop(0.5, 'rgba(255,255,255,1)'); l.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = l; g.beginPath(); g.moveTo(-len, 0); g.lineTo(0, -w); g.lineTo(len, 0); g.lineTo(0, w); g.closePath(); g.fill(); g.restore();
+      }
+      const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+      this.star = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+      this.star.visible = false; this.star.renderOrder = 14; this.group.add(this.star);
+    }
+    if (this.glintT == null) return;
+    this.glintT += dt;
+    const D = 0.26, u = this.glintT / D;
+    if (u >= 1 || !this.drawn) { this.glintT = null; this.star.visible = false; this.steel.emissive.setScalar(0); return; }
+    const s = Math.sin(Math.PI * u), k = 0.12 + 0.86 * (1 - Math.pow(1 - u, 2.2));
+    // slightly toward the camera, so the blade does not hide half of it
+    const p = this.point(k, new THREE.Vector3()); p.addScaledVector(camera.position.clone().sub(p).normalize(), 0.06);
+    this.star.position.copy(this.group.worldToLocal(p));
+    this.star.scale.setScalar((0.28 + 0.34 * this.glintPow) * (0.35 + 0.65 * s));
+    this.star.material.rotation = u * 1.6; this.star.material.opacity = Math.min(1, s * 1.6);
+    this.star.visible = true;
+    this.steel.emissive.setScalar(0.55 * this.glintPow * s);
+  }
 }
 
 // ---------------------------------------------------------------- slash trail
@@ -168,6 +204,7 @@ export class Weapon {
     this.moveScale = 1; this.busy = false; this.faceLock = false;
     this.aim = 0; this.prevS = 0; this.struck = new Set(); this.lunged = false; this.swished = false;
     this.legs = 1; this._s = {};
+    this.parryCool = 0; this.glinted = false; this.deflected = 0;
     this._bp = Array.from({ length: CUT_AT.length }, () => new THREE.Vector3()); this._bpOk = false;   // where the blade was last frame
     this.debug = null;
     game.scene.add(rig.trail.mesh);
@@ -184,9 +221,33 @@ export class Weapon {
     this.buffer = 0.35;                         // remembered a moment, so an early press still chains
   }
 
+  // F: bring the blade up across the chest (drawing it first if it is on his back)
+  parry() {
+    const P = this.player, G = this.game;
+    if (!P.grounded || P.state !== 'ground' || this.parryCool > 0) return;
+    if (G.bow?.equipped) return;
+    if (this.kind === 'parry' && this.t < MOVES.parry.cancel) return;
+    this.begin('parry');
+  }
+  // the blade is up and a blow lands: turn it aside
+  get parrying() { return this.kind === 'parry' && this.t >= PARRY_WINDOW[0] && this.t <= PARRY_WINDOW[1]; }
+  // called by whatever is hitting him; true if the blow was turned aside (and the effects have played)
+  deflect(from) {
+    if (!this.parrying || this.t - this.deflected < 0.12) return false;
+    const G = this.game, p = this.rig.point(0.55, new THREE.Vector3());
+    this.deflected = this.t;
+    G.audio?.sword('clang');
+    this.rig.glint(2);
+    for (let i = 0; i < 18; i++) G.particles.emit('spark', p.x, p.y, p.z, (Math.random() - 0.5) * 6, 1 + Math.random() * 3, (Math.random() - 0.5) * 6, 3, 1);
+    G.rig.shake = Math.max(G.rig.shake, 0.4); G.hitStop = Math.max(G.hitStop, 0.1);
+    G.hud?.callout('PARRY', 'gold');
+    return true;
+  }
+
   begin(kind) {
     const P = this.player, G = this.game, M = MOVES[kind];
-    this.kind = kind; this.lastKind = kind; this.t = 0; this.swapped = false; this.queued = null;
+    this.glinted = false;
+    this.kind = kind; this.lastKind = kind; this.t = 0; this.swapped = kind === 'parry' && this.rig.drawn; this.queued = null;
     this.waitingOn = false; this.waiting = 0; this.struck.clear(); this.lunged = false; this.swished = false; this.landed = false; this.prevS = 0;
     // face where the camera looks
     const b = G.rig.basis();
@@ -214,7 +275,10 @@ export class Weapon {
     if (this.freeze) { P.vel.set(0, 0, 0); this.moveScale = 0; this.faceLock = true; return; }
     if (inMenu) { if (this.kind) this.reset(); return; }
     if (P.state === 'dive' || P.state === 'roll' || P.state === 'flop' || P.state === 'getup' || P.state === 'flash') { if (this.kind) this.reset(); this.w = 0; return; }
+    if (G.bow?.equipped) { if (this.kind) this.reset(); this.w = 0; return; }
+    this.parryCool = Math.max(0, this.parryCool - dt);
     if (input.attack()) this.press();
+    if (input.parry()) this.parry();
     // the legs take the sword stance only while he is not walking; blended, never switched
     this.legs = damp(this.legs, input.move().mag > 0.2 ? 0 : 1, 9, dt);
     this.buffer = Math.max(0, this.buffer - dt);
@@ -231,6 +295,11 @@ export class Weapon {
     this.moveScale = this.kind === 'sheathe' ? 0.7 : this.waitingOn ? 0.55 : 0.3;
     if (this.faceLock) P.heading = dampAngle(P.heading, this.aim, 16, dt);
 
+    if (this.kind === 'parry') {
+      this.moveScale = 0.35;
+      if (!this.glinted && this.t >= PARRY_WINDOW[0]) { this.glinted = true; this.rig.glint(1); G.audio?.sword('parry'); }
+      if (this.t >= M.dur - 0.01) this.parryCool = PARRY_COOLDOWN;
+    }
     // the sword changes places
     if (M.swap != null && !this.swapped && this.t >= M.swap) {
       this.swapped = true;
@@ -285,6 +354,7 @@ export class Weapon {
     const cutting = !!(M && M.hit && this.t >= M.hit[0] && this.t <= M.hit[1] + 0.04);
     this.rig.trail.update(dt, this.rig, this.rig.drawn && (cutting || (M && M.hit && this.t > M.hit[0] - 0.08 && this.t < M.hit[1] + 0.1)));
     this.cutSweep(dt, M);
+    this.rig.updateGlint(dt, this.game.camera);
     if (M && M.hit && dt > 0 && !this.freeze) {
       const s = clamp((this.t - M.hit[0]) / (M.hit[1] - M.hit[0]), 0, 1);
       if (this.t >= M.hit[0] && this.t <= M.hit[1] + 1e-4) this.scan(this.kind, s);
@@ -442,16 +512,24 @@ export class Weapon {
 
   // trees, rocks, posts the volume touches (once per swing each)
   hitObjects(kind, F, test) {
-    const G = this.game, list = [G.trees?.colliders, G.props?.colliders];
+    const G = this.game, list = [G.trees?.colliders, G.props?.colliders, G.enemies?.targets];
     for (const L of list) {
       if (!L) continue;
       for (const c of L) {
+        if (c.dead) continue;
         const dx = c.x - F.x, dz = c.z - F.z, d2 = dx * dx + dz * dz;
         if (d2 > 3.6 * 3.6) continue;
         if (this.struck.has(c)) continue;
         const dist = Math.sqrt(d2);
         if (!test(c, dx, dz, dist)) continue;
         this.struck.add(c);
+        if (c.onHit) {                 // something that takes damage (the dummy, the practice enemy)
+          c.onHit(kind === 'draw' ? 'cut' : kind, HURT[kind] ?? 15, dx, dz);
+          G.audio?.sword('hit'); G.rig.shake = Math.max(G.rig.shake, 0.2); G.hitStop = Math.max(G.hitStop, 0.07);
+          const hp = new THREE.Vector3(c.x, groundY(c.x, c.z) + 1.1, c.z);
+          for (let i = 0; i < 8; i++) G.particles.emit('dust', hp.x, hp.y, hp.z, -dx / dist * 1.5, 0.8, -dz / dist * 1.5, 1.4, 1);
+          continue;
+        }
         const k = Math.max(0.01, dist - c.r), px = F.x + dx / dist * k, pz = F.z + dz / dist * k, y = groundY(px, pz) + 0.9;
         G.particles.emit('dust', px, y, pz, -dx / dist, 0.9, -dz / dist, 1.2, 9);
         G.particles.emit('seed', px, y, pz, -dx / dist, 1.0, -dz / dist, 1.2, 5);

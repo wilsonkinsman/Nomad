@@ -25,6 +25,7 @@ import { Input } from './input.js';
 import { CameraRig } from './camera.js';
 import { Skills } from './skills.js';
 import { Flash } from './flash.js';
+import { Enemies, TRAINING } from './enemies.js';
 
 const QUALITY = {
   low:    { ratio: 0.6,  msaa: 0, shadow: 1024, veg: 0.5 },
@@ -119,8 +120,10 @@ async function boot() {
   game.contact = new BodyContact(game);
   game.skills = new Skills();
   game.flash = new Flash(game);
+  game.enemies = new Enemies(game);
+  game.player.colliders.push(...game.enemies.colliders);
   game.systems.push(game.grass, game.wheat, game.snow, game.leaves, game.props, game.particles, game.fireflies, game.hud, game.audio);
-  game.systems.push(game.flash);
+  game.systems.push(game.flash, game.enemies);
   game.systems.unshift(game.contact);    // body hitboxes stamp before the snow and leaves update
   wireEvents();
   game.sky.setNight(settings.night);
@@ -203,6 +206,12 @@ $('seg-character').onclick = async (e) => {
 };
 $('seg-quality').onclick = (e) => { const q = e.target.dataset.q; if (!q) return; settings.quality = q; saveSettings(); syncMenu(); applyQuality(); };
 $('btn-skills').onclick = () => game.skills.open();
+// the training ground: the empty field to the west, with a dummy and an enemy to practise on
+$('btn-train').onclick = () => {
+  game.player.weapon?.reset(); game.player.teleport(TRAINING.x + 6.5, TRAINING.z - 1.5); game.player.heading = -Math.PI / 2;
+  game.rig.yaw = Math.PI / 2; game.rig.focus.set(0, 0, 0);
+  $('btn-start').click();
+};
 $('vol').oninput = (e) => { settings.volume = +e.target.value; saveSettings(); game.audio?.setVolume(settings.volume); };
 syncMenu();
 addEventListener('keydown', (e) => {

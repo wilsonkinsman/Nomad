@@ -10,6 +10,7 @@ const KINDS = {
   water: { col: [0.7, 0.75, 0.8], size: 0.03, grow: 0.0, drag: 0.8, grav: -9.8, life: 0.7, a: 0.8 },
   seed:  { col: [0.9, 0.8, 0.55], size: 0.02, grow: 0.0, drag: 4.5, grav: -0.9, life: 2.5, a: 0.9 },
   grass: { col: [0.42, 0.6, 0.22], size: 0.03, grow: 0.0, drag: 2.2, grav: -6.5, life: 0.9, a: 0.95 },
+  spark: { col: [2.4, 1.9, 1.0], size: 0.05, grow: 0.0, drag: 1.1, grav: -7.0, life: 0.42, a: 1 },
   // what a cut sends flying: bigger, paler and slower to come down than the bits grass shakes loose
   clip:  { col: [0.62, 0.7, 0.26], size: 0.055, grow: 0.0, drag: 1.5, grav: -4.0, life: 1.9, a: 0.95 },
   chaff: { col: [0.86, 0.72, 0.38], size: 0.045, grow: 0.0, drag: 1.7, grav: -3.2, life: 2.1, a: 0.95 },

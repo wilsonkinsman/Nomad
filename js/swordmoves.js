@@ -56,6 +56,14 @@ export const MOVE_KEYS = {
     [0.42, { spine: R(0.2, -0.1), chest: R(0.2, -0.15), hips: R(0.1, -0.15), stance: [0.48, -0.3, 0.19], grip: R(1), sp: R(-0.02, 0.0, 0.31), sa: R(0.6, 1.55, 0) }],
     [0.74, READY],
   ],
+  // F: bring the blade up flat across his chest, the hilt on his right and the tip out past his left
+  // shoulder, and hold it there; it comes back down to the ready pose
+  parry: [
+    [0.00, READY],
+    [0.06, { grip: R(1), sp: R(-0.04, 0.0, 0.19), sa: R(1.5, 1.35, 0), spine: R(0.06), chest: R(0.05), hips: R(0.04), stance: [0.08, -0.12, 0.05] }],
+    [0.36, { grip: R(1), sp: R(-0.04, 0.0, 0.19), sa: R(1.5, 1.35, 0), spine: R(0.06), chest: R(0.05), hips: R(0.04), stance: [0.08, -0.12, 0.05] }],
+    [0.62, READY],
+  ],
   // return the blade to the sheath over the left shoulder: both hands carry it out to his left and round
   // behind the shoulder (the sword's path, in the chest's frame, ends exactly where the arm-keyed pose
   // below begins), then the right hand lets go and the left slides the blade home

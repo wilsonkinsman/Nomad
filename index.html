@@ -23,6 +23,7 @@
     <div class="menu-buttons">
       <button id="btn-start" class="mbtn primary">Wander</button>
       <button id="btn-skills" class="mbtn">Skills <kbd>K</kbd></button>
+      <button id="btn-train" class="mbtn">Training ground</button>
       <div class="menu-row">
         <span>Night mode</span>
         <button id="btn-night" class="toggle" aria-pressed="false"><i></i></button>
@@ -48,7 +49,7 @@
     <div class="menu-controls">
       <div><b>WASD</b> move</div><div><b>Shift</b> sprint</div><div><b>Space</b> jump</div>
       <div><b>C</b> / <b>Right-click</b> dive</div><div><b>X</b> walk / jog</div><div><b>Mouse</b> look · wheel zoom</div>
-      <div><b>Click</b> / <b>F</b> sword (draw, cut, chop, thrust)</div>
+      <div><b>Click</b> sword (draw, cut, chop, thrust)</div><div><b>F</b> parry <span class="dim">(sword across the chest)</span></div>
       <div><b>C</b> twice  flash roll <span class="dim">(skill)</span></div><div><b>K</b> skill tree</div>
       <div><b>Esc</b> menu</div><div><b>H</b> show hitboxes</div>
       <div><b>Gamepad</b> supported</div>
@@ -63,9 +64,14 @@
   <div id="zone-title"><div class="zt-en"></div><div class="zt-jp"></div></div>
   <svg id="stamina" viewBox="0 0 40 40"><circle class="st-bg" cx="20" cy="20" r="16"/><circle class="st-fg" id="st-fg" cx="20" cy="20" r="16"/></svg>
   <div id="hint"></div>
+  <div id="crosshair"><i></i></div>
+  <div id="hp"><div id="hp-fill"></div></div>
 </div>
 <div id="click-to-look" hidden>Click to look around</div>
 <canvas id="flash-fx"></canvas>
+<div id="floats"></div>
+<div id="callout"></div>
+<div id="hurt"></div>
 
 <div id="skills" hidden>
   <div class="sk-card" role="dialog" aria-label="Skills">

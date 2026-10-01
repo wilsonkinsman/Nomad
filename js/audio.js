@@ -113,6 +113,12 @@ export class Audio {
         case 'cut': this.sweep(t, 600, 2300, 700, 1.0, 0.24, 0.22); break;
         case 'overhead': this.sweep(t, 500, 1800, 420, 0.9, 0.26, 0.24); break;
         case 'thrust': this.sweep(t, 1200, 3600, 2400, 1.4, 0.16, 0.2); break;
+        case 'parry':                                    // the blade comes up: a bright ring
+          this.sweep(t, 1800, 5200, 3800, 4, 0.14, 0.12);
+          this.ping(t + 0.02, 2640, 0.9, 0.09); this.ping(t + 0.02, 3970, 0.7, 0.05); this.ping(t + 0.03, 5310, 0.5, 0.03); break;
+        case 'clang':                                    // a blow turned aside: steel on steel
+          this.grain(t, 2400, 0.7, 0.06, 0.34); this.thump(t, 190, 0.1, 0.34);
+          this.ping(t, 1830, 1.3, 0.2); this.ping(t, 2760, 1.1, 0.16); this.ping(t + 0.005, 4310, 0.9, 0.11); this.ping(t + 0.01, 6120, 0.6, 0.06); break;
         case 'slam': this.thump(t, 85, 0.2, 0.32); this.grain(t, 500, 0.6, 0.22, 0.2, 'lowpass'); break;
         case 'hit': this.thump(t, 150, 0.09, 0.3); this.grain(t, 1800, 1.0, 0.07, 0.16); break;
       }
@@ -127,6 +133,13 @@ export class Audio {
     this.step(s, 5, true);
     if (s.kind === 'snow') for (let i = 0; i < 14; i++) this.grain(t + Math.random() * 0.3, 600 + Math.random() * 1400, 1.2, 0.05, 0.2 * k);
     if (s.kind === 'leaves') for (let i = 0; i < 30; i++) this.grain(t + Math.random() * 0.35, 2500 + Math.random() * 4000, 2.5, 0.008, 0.25 * k);
+  }
+
+  // taking a hit: a dull thud and a rasp
+  hurt() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + 0.005;
+    this.thump(t, 90, 0.2, 0.5); this.grain(t, 700, 0.6, 0.2, 0.3, 'lowpass'); this.grain(t, 2200, 1.0, 0.07, 0.14);
   }
 
   // Flash Roll: a sharp rising hiss as he goes, a low thump and a falling hiss as he arrives

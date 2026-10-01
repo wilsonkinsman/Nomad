@@ -30,6 +30,37 @@ export class Hud {
     this.stam = document.getElementById('stamina'); this.stamFg = document.getElementById('st-fg');
     this.hintEl = document.getElementById('hint'); this.hintT = 0;
     this.lookEl = document.getElementById('click-to-look');
+    this.callEl = document.getElementById('callout'); this.hpEl = document.getElementById('hp-fill'); this.hpBox = document.getElementById('hp');
+    this.hurtEl = document.getElementById('hurt'); this.crossEl = document.getElementById('crosshair'); this.floatsEl = document.getElementById('floats');
+    this.floats = []; this._v = null;
+  }
+
+  // a word in the middle of the screen (PARRY, HIT, DODGE...): cls is 'gold', 'red' or ''
+  callout(text, cls = '') {
+    const el = this.callEl; el.textContent = text; el.className = '';
+    void el.offsetWidth; el.className = 'show ' + cls;
+  }
+  // a number or word that rises from a point in the world and fades (damage)
+  floatText(pos, text, cls = '') {
+    const el = document.createElement('div'); el.className = 'fl ' + cls; el.textContent = text;
+    this.floatsEl.appendChild(el);
+    this.floats.push({ el, p: pos.clone(), t: 0, dx: (Math.random() - 0.5) * 40 });
+  }
+  setHealth(hp, max) { this.hpEl.style.width = Math.max(0, hp / max * 100) + '%'; this.hpBox.classList.toggle('low', hp / max < 0.3); }
+  hurtFlash() { const el = this.hurtEl; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); }
+  setCrosshair(on, charge = 0) { this.crossEl.classList.toggle('on', on); this.crossEl.style.setProperty('--c', charge.toFixed(3)); this.crossEl.classList.toggle('full', charge >= 0.999); }
+
+  updateFloats(dt, game) {
+    const THREE = game.THREE, cam = game.camera, v = this._v || (this._v = new THREE.Vector3());
+    for (let i = this.floats.length - 1; i >= 0; i--) {
+      const f = this.floats[i]; f.t += dt;
+      if (f.t > 1.1) { f.el.remove(); this.floats.splice(i, 1); continue; }
+      v.copy(f.p); v.y += f.t * 0.9; v.project(cam);
+      const on = v.z < 1;
+      f.el.style.display = on ? '' : 'none';
+      f.el.style.transform = `translate(${((v.x * 0.5 + 0.5) * innerWidth + f.dx * f.t).toFixed(1)}px, ${((-v.y * 0.5 + 0.5) * innerHeight).toFixed(1)}px) translate(-50%, -50%) scale(${(1.25 - 0.25 * Math.min(1, f.t * 6)).toFixed(3)})`;
+      f.el.style.opacity = f.t < 0.7 ? 1 : 1 - (f.t - 0.7) / 0.4;
+    }
   }
 
   hint(text, secs = 3) {
@@ -47,6 +78,7 @@ export class Hud {
   update(dt, game) {
     this.lookEl.hidden = game.state !== 'play' || game.input.locked || game.input.pad.active;
     if (game.state !== 'play') return;
+    this.updateFloats(dt, game);
     const cam = game.rig, P = game.player;
     const fx = -Math.sin(cam.yaw), fz = -Math.cos(cam.yaw);
     const heading = (Math.atan2(fx, -fz) * 180 / Math.PI + 360) % 360;   // 0 = north (-z), 90 = east (+x)

@@ -9,6 +9,7 @@ export class Input {
     this.locked = false;
     this.enabled = false;
     this.walkToggle = false;
+    this.mouseDown = false;          // the left button, held
     this.pad = { x: 0, y: 0, lx: 0, ly: 0, sprint: false, active: false };
     this._padPrev = [];
 
@@ -20,15 +21,16 @@ export class Input {
       if (e.code === 'KeyX') this.walkToggle = !this.walkToggle;
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
-    addEventListener('blur', () => this.keys.clear());
+    addEventListener('blur', () => { this.keys.clear(); this.mouseDown = false; });
     canvas.addEventListener('mousedown', (e) => {
       if (!this.enabled) return;
       if (!this.locked) { canvas.requestPointerLock?.(); return; }
       if (e.button === 2) { this.pressed.add('Dive'); this.tapDive(); }
-      if (e.button === 0) this.pressed.add('Attack');
+      if (e.button === 0) { this.pressed.add('Attack'); this.mouseDown = true; }
     });
+    addEventListener('mouseup', (e) => { if (e.button === 0) this.mouseDown = false; });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    document.addEventListener('pointerlockchange', () => { this.locked = document.pointerLockElement === canvas; });
+    document.addEventListener('pointerlockchange', () => { this.locked = document.pointerLockElement === canvas; if (!this.locked) this.mouseDown = false; });
     addEventListener('mousemove', (e) => {
       if (!this.locked) return;
       this.lookX += e.movementX; this.lookY += e.movementY;
@@ -47,7 +49,7 @@ export class Input {
     const b = (i) => !!(g.buttons[i] && g.buttons[i].pressed);
     const edge = (i, name) => { if (b(i) && !this._padPrev[i]) this.pressed.add(name); };
     edge(0, 'Space'); edge(1, 'Dive'); edge(2, 'Dive'); if ((b(1) && !this._padPrev[1]) || (b(2) && !this._padPrev[2])) this.tapDive();
-     edge(3, 'Attack'); edge(9, 'Escape');
+     edge(3, 'Attack'); edge(4, 'Parry'); edge(8, 'KeyB'); edge(9, 'Escape');
     if (b(10) && !this._padPrev[10]) P.sprintLatch = !P.sprintLatch;
     P.sprint = b(5) || b(7) || (P.sprintLatch && Math.hypot(P.x, P.y) > 0.5);
     if (Math.hypot(P.x, P.y) < 0.2) P.sprintLatch = false;
@@ -74,6 +76,10 @@ export class Input {
   // the roll tapped twice within a third of a second
   tapDive() { const now = performance.now(); if (now - (this._lastDive || -1e9) < 320) { this.pressed.add('DiveDouble'); this._lastDive = 0; } else this._lastDive = now; }
   diveDouble() { return this.pressed.has('DiveDouble'); }
-  attack() { return this.pressed.has('Attack') || this.pressed.has('KeyF'); }
+  attack() { return this.pressed.has('Attack'); }
+  parry() { return this.pressed.has('KeyF') || this.pressed.has('Parry'); }
+  bowKey() { return this.pressed.has('KeyB'); }
+  // the attack button held down (drawing the bow)
+  attackHeld() { return this.mouseDown; }
   endFrame() { this.pressed.clear(); this.lookX = 0; this.lookY = 0; this.wheel = 0; }
 }

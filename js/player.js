@@ -37,6 +37,7 @@ export class Player {
     this.walkMode = false;
     this._prevSpeed = 0;
     this.wind = new THREE.Vector3();
+    this.maxHp = 100; this.hp = 100; this.regenDelay = 0; this.invuln = 0;
     this.bindWeapon();
     this.syncModel(0);
   }
@@ -71,9 +72,29 @@ export class Player {
 
   setState(s) { this.state = s; this.stateT = 0; }
 
+  // a blow lands on him. Returns 'dodged' if he was rolling or flashing through it, else 'hit'.
+  hurt(amount, from) {
+    const g = this.game;
+    if (this.state === 'dive' || this.state === 'roll' || this.state === 'flash' || this.invuln > 0) return 'dodged';
+    this.hp = Math.max(0, this.hp - amount); this.regenDelay = 5; this.invuln = 0.6;
+    g.hud?.hurtFlash(); g.hud?.callout('HIT', 'red');
+    g.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 1.7, this.pos.z), '-' + amount, 'red');
+    g.rig.shake = Math.max(g.rig.shake, 0.6); g.audio?.hurt(); g.hitStop = Math.max(g.hitStop, 0.08);
+    if (from) {
+      const dx = this.pos.x - from.x, dz = this.pos.z - from.z, l = Math.hypot(dx, dz) || 1;
+      this.vel.x += dx / l * 6; this.vel.z += dz / l * 6;
+    }
+    if (this.weapon && this.weapon.kind && this.weapon.kind !== 'sheathe') this.weapon.begin('sheathe');      // the blow knocks the blade from his guard
+    if (this.hp <= 0) { g.hud?.callout('DEFEATED', 'red'); this.hp = this.maxHp; this.invuln = 1.5; }
+    return 'hit';
+  }
+
   update(dt, inMenu) {
     const g = this.game, input = g.input;
     this.stateT += dt;
+    this.invuln = Math.max(0, this.invuln - dt);
+    if (this.regenDelay > 0) this.regenDelay -= dt; else if (this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + 8 * dt);
+    g.hud?.setHealth(this.hp, this.maxHp);
     const W = this.weapon;
     if (W) W.tick(dt, inMenu);
     const S = this.surface = surfaceAt(this.pos.x, this.pos.z, this.surface);
