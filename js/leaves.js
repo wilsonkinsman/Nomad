@@ -5,7 +5,7 @@
 // Gusts make resting ones skitter, and the trees keep shedding from a separate small pool.
 import * as THREE from 'three';
 import { groundY, surfaceAt, ZONES } from './world.js';
-import { addTranslucency } from './grass.js';
+import { addTranslucency, GLSL_CULL } from './grass.js';
 import { mulberry32, clamp } from './util.js';
 
 const CELL = 2;
@@ -40,7 +40,12 @@ export class Leaves {
     const z = ZONES.leaves, s = {};
     const mat = new THREE.MeshStandardMaterial({ map: atlas, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.75 });
     mat.onBeforeCompile = (sh) => {
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aCell;')
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float aCell;\n' + GLSL_CULL)
+        // a leaf out of view, or too far off to be more than a speck, is skipped (all 56 000 are drawn in one call)
+        .replace('#include <begin_vertex>', `
+          vec3 leafAt = (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+          if (offView(leafAt, 0.4) || distance(leafAt, cameraPosition) > 85.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
+          #include <begin_vertex>`)
         .replace('#include <uv_vertex>', `#include <uv_vertex>
           vMapUv = (uv + vec2(mod(aCell, 4.0), 3.0 - floor(aCell / 4.0))) / 4.0;`);
       addTranslucency(sh, '0.7');
@@ -234,6 +239,17 @@ export class Leaves {
   }
 
   update(dt, game) {
+    // the litter is one draw of 56 000 leaves: skip it when the hollow is out of sight or beyond the distance a leaf
+    // is more than a speck (the shader drops the far and off-screen ones one by one when it is drawn)
+    {
+      const c = game.camera.position, Z = ZONES.leaves, R = Math.max(Z.rx, Z.rz) * 1.3;
+      if (!this._box) { this._box = new THREE.Box3(new THREE.Vector3(Z.cx - R, -10, Z.cz - R), new THREE.Vector3(Z.cx + R, 25, Z.cz + R)); this._fr = new THREE.Frustum(); this._pm = new THREE.Matrix4(); }
+      const gap = Math.hypot(Math.max(0, Math.abs(c.x - Z.cx) - R), Math.max(0, Math.abs(c.z - Z.cz) - R));
+      game.camera.updateMatrixWorld();
+      this._pm.multiplyMatrices(game.camera.projectionMatrix, game.camera.matrixWorldInverse);
+      this._fr.setFromProjectionMatrix(this._pm);
+      this.mesh.visible = gap < 85 && this._fr.intersectsBox(this._box);
+    }
     if (dt <= 0) return;
     this.burn(dt);
     const P = game.player, W = game.wind;

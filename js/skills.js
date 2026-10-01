@@ -56,7 +56,7 @@ export const SKILLS = [
   { id: 'earth', name: 'Earth Power', path: 'earth', cost: 1, requires: null, row: 0, col: 0.5, icon: ICONS.earth,
     desc: 'Press G. Drive the blade into the ground and the earth answers: stones rise and circle you. For forty seconds you take half damage, your blows throw things back, and Sky Slam raises a ring of stone. Ten seconds to recover after it fades.' },
   { id: 'wall', name: 'Earth Wall', path: 'earth', cost: 1, requires: 'earth', row: 1, col: 0, icon: ICONS.wall,
-    desc: 'Press Q while Earth Power is on you. A wall of rock tears up out of the ground in front of you: arrows shatter on it, nothing walks through it, and a dash into it ends with whoever dashed stunned on the ground.' },
+    desc: 'Press Q while Earth Power is on you. A wall of rock tears up out of the ground in front of you (one every second and a half): arrows shatter on it, nothing walks through it, and a dash into it ends with whoever dashed stunned on the ground.' },
   { id: 'rockkick', name: 'Rock Kick', path: 'earth', cost: 1, requires: 'earth', row: 1, col: 1, icon: ICONS.rockkick,
     desc: 'Press E while Earth Power is on you. Stomp, and a boulder bursts up out of the ground in a spray of stones; side-kick it and it flies low and very fast, flattening the field as it passes and shattering on whatever it hits, throwing it back hard.' },
 ];

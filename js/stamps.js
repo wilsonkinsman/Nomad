@@ -6,6 +6,7 @@ import * as THREE from 'three';
 
 const V = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 const MAX = 24;
+const TICK = 0.1;
 const CUT_MAX = 48;
 
 const FRAG = {
@@ -160,7 +161,12 @@ export class StampField {
     else { this.S[i].set(a[0], a[1], a[2], a[3]); this.S2[i].set(a[4] || 0, a[5] ?? 1, a[6] ?? 1, 0); }
   }
 
+  // The pass runs when there is something to stamp; otherwise the slow relaxing is saved up and applied every
+  // TICK seconds (it is linear in time, so the result is the same; it just costs one pass in six, not every frame).
   update(dt) {
+    this.acc = (this.acc || 0) + dt;
+    if (!this.count && this.acc < TICK) return;
+    dt = this.acc; this.acc = 0;
     this.mat.uniforms.tPrev.value = this.a.texture;
     this.mat.uniforms.uDt.value = dt;
     this.mat.uniforms.uCount.value = this.count;

@@ -7,6 +7,17 @@ import { GLSL_WORLD } from './world.js';
 import { GLSL_WIND } from './wind.js';
 import { GLSL_NOISE } from './util.js';
 
+// Is a point (world space) out of the camera's view, with a margin m in metres for whatever stands on it?
+// The vegetation asks this first thing in its vertex shader and skips everything it can't see: blades behind
+// the camera or off to the side cost a few instructions instead of the whole bend-and-light.
+export const GLSL_CULL = /* glsl */`
+bool offView(vec3 w, float m) {
+  vec3 v = (viewMatrix * vec4(w, 1.0)).xyz;
+  float d = -v.z;
+  if (d < -m) return true;
+  float tx = 1.0 / projectionMatrix[0][0], ty = 1.0 / projectionMatrix[1][1];
+  return abs(v.x) > d * tx + m * (1.0 + tx) || abs(v.y) > d * ty + m * (1.0 + ty);
+}`;
 export const GLSL_TRAMPLE = /* glsl */`
 uniform sampler2D uTrample; uniform vec4 uTrampleRect;
 vec4 trampleAt(vec2 p){ vec2 uv = (p - uTrampleRect.xy) * uTrampleRect.w; if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return vec4(0.0); return texture(uTrample, uv); }
@@ -71,7 +82,7 @@ export class Grass {
         Object.assign(s.uniforms, U);
         s.vertexShader = s.vertexShader
           .replace('#include <common>', `#include <common>
-            ${GLSL_WORLD} ${GLSL_WIND} ${GLSL_NOISE} ${GLSL_TRAMPLE}
+            ${GLSL_WORLD} ${GLSL_WIND} ${GLSL_NOISE} ${GLSL_TRAMPLE} ${GLSL_CULL}
             uniform int uGrid; uniform float uSize, uSpacing, uNear, uFar, uWidth, uCutSize; uniform vec2 uCenter; uniform vec3 uPlayer; uniform sampler2D uCut;
             varying float vT, vCut; varying vec3 vTint;`)
           .replace('#include <beginnormal_vertex>', `
@@ -80,14 +91,19 @@ export class Grass {
             vec2 local = (cell + nHash22(cell * 1.13 + 0.7)) * uSpacing;
             vec2 wxz = local + uSize * floor((uCenter - local) / uSize + 0.5);
             vec2 wcell = floor(wxz / uSpacing);
+            float dist = length(wxz - uCenter);
+            float fade = smoothstep(uNear * 0.85, uNear, dist) * (1.0 - smoothstep(uFar * 0.72, uFar, dist));
+            if (uNear < 0.5) fade = 1.0 - smoothstep(uFar * 0.72, uFar, dist);
+            // a blade outside its ring (the square grid's corners, the hole the near ring fills) is thrown away
+            // before any texture is read; one standing nowhere (path, snow, wheat) as soon as that is known
+            if (fade <= 0.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
+            if (offView(vec3(wxz.x, worldHeight(wxz) + 0.5, wxz.y), 1.6)) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
             float r1 = nHash12(wcell * 1.37 + 3.1), r2 = nHash12(wcell * 0.71 + 7.3), r3 = nHash12(wcell + 11.1);
             vec4 zn = worldZone(wxz); vec4 pt = worldPath(wxz);
             float dens = zn.r * (1.0 - smoothstep(0.2, 0.6, pt.r)) * (1.0 - smoothstep(0.05, 0.35, zn.a));
             dens = max(dens, zn.b * 0.1 * (1.0 - pt.r));     // a few tufts poke through the leaves
-            float dist = length(wxz - uCenter);
-            float fade = smoothstep(uNear * 0.85, uNear, dist) * (1.0 - smoothstep(uFar * 0.72, uFar, dist));
-            if (uNear < 0.5) fade = 1.0 - smoothstep(uFar * 0.72, uFar, dist);
             float k = clamp((dens * fade - r3 * 0.55) * 4.0, 0.0, 1.0);
+            if (k <= 0.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
             float patchN = nNoise(wxz * 0.13);
             float hgt = mix(0.22, 0.6, r1) * (0.6 + 0.8 * patchN) * k * (1.0 + pt.a * 0.3);
             // cut: stubble stays low for a while and then grows back, each blade a little out of step

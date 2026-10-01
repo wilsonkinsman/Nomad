@@ -18,7 +18,7 @@ import { groundY } from './world.js';
 import { clamp, smoothstep } from './util.js';
 import { mergeVertices } from '../lib/utils/BufferGeometryUtils.js';
 
-export const DURATION = 40, COOLDOWN = 10, CAGE = 6, WALL_LIFE = 10;
+export const DURATION = 40, COOLDOWN = 10, CAGE = 6, WALL_LIFE = 10, WALL_COOL = 1.5;
 export const KICK_TIME = 1.05;                       // the whole Rock Kick, stomp to standing
 const STOMP_AT = 0.26, KICK_AT = 0.56, KICK_SPEED = 44, KICK_DMG = 42, KICK_KNOCK = 2.8;
 const MAX_WALLS = 3, RISE = 0.28, FALL = 0.55;
@@ -132,7 +132,7 @@ class Wall {
 export class Earth {
   constructor(game) {
     this.game = game;
-    this.charge = 0; this.cool = 0;
+    this.charge = 0; this.cool = 0; this.wallCool = 0;
     this.walls = []; this.debris = []; this.cracks = []; this.dazed = 0;
     const rock = game.tx?.rock;
     const tex = rock ? rock.map.clone() : null;
@@ -216,6 +216,8 @@ export class Earth {
     if (!G.skills?.has('wall')) { G.hud?.hint('Learn Earth Wall in the skill tree (K), under Earth Power', 3); return false; }
     if (!this.active) { G.hud?.hint('The wall needs the earth with you: call it with G first', 3); return false; }
     if (P.state !== 'ground' || !P.grounded || G.bow?.equipped) return false;
+    if (this.wallCool > 0) { G.hud?.hint('The ground needs a moment: ' + this.wallCool.toFixed(1) + ' s', 0.8); return false; }
+    this.wallCool = WALL_COOL;
     const b = G.rig.basis(), h = Math.atan2(b.fx, b.fz), fx = Math.sin(h), fz = Math.cos(h);
     const free = this.walls.filter((w) => !w.cage && !w.falling);
     if (free.length >= MAX_WALLS) free[0].fall();
@@ -410,6 +412,7 @@ export class Earth {
 
   update(dt, game) {
     const P = game.player;
+    this.wallCool = Math.max(0, this.wallCool - dt);
     if (this.charge > 0) {
       this.charge -= dt;
       if (this.charge <= 0) { this.charge = 0; this.cool = COOLDOWN; game.audio?.earth('crumble'); game.hud?.hint('The earth lets go of you', 2.5); }

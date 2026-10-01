@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { GLSL_WORLD, ZONES } from './world.js';
 import { GLSL_WIND } from './wind.js';
 import { GLSL_NOISE } from './util.js';
-import { GLSL_TRAMPLE, addTranslucency } from './grass.js';
+import { GLSL_TRAMPLE, GLSL_CULL, addTranslucency } from './grass.js';
 
 function stalkGeometry(stemSegs = 4) {
   // part 0: stem ribbon, part 1/2: two crossed planes of the ear, part 3: a leaf
@@ -68,7 +68,7 @@ export class Wheat {
         Object.assign(s.uniforms, U);
         s.vertexShader = s.vertexShader
           .replace('#include <common>', `#include <common>
-            ${GLSL_WORLD} ${GLSL_WIND} ${GLSL_NOISE} ${GLSL_TRAMPLE}
+            ${GLSL_WORLD} ${GLSL_WIND} ${GLSL_NOISE} ${GLSL_TRAMPLE} ${GLSL_CULL}
             attribute float part;
             uniform int uGrid; uniform float uSize, uSpacing, uNear, uFar, uWidth, uEar, uCutSize; uniform vec2 uCenter; uniform vec3 uPlayer; uniform sampler2D uCut;
             varying float vT; varying float vPart; varying float vCut; varying vec3 vTint;`)
@@ -78,13 +78,16 @@ export class Wheat {
             vec2 local = (cell + nHash22(cell * 0.91 + 2.3)) * uSpacing;
             vec2 wxz = local + uSize * floor((uCenter - local) / uSize + 0.5);
             vec2 wcell = floor(wxz / uSpacing);
-            float r1 = nHash12(wcell * 1.73 + 5.1), r2 = nHash12(wcell * 0.37 + 1.3), r3 = nHash12(wcell + 21.7);
-            vec4 zn = worldZone(wxz); vec4 pt = worldPath(wxz);
-            float dens = smoothstep(0.35, 0.75, zn.g) * (1.0 - smoothstep(0.1, 0.4, pt.r));
             float dist = length(wxz - uCenter);
             float fade = smoothstep(uNear * 0.85, uNear, dist) * (1.0 - smoothstep(uFar * 0.75, uFar, dist));
             if (uNear < 0.5) fade = 1.0 - smoothstep(uFar * 0.75, uFar, dist);
+            if (fade <= 0.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }               // outside this ring: skip it before reading anything
+            if (offView(vec3(wxz.x, worldHeight(wxz) + 0.6, wxz.y), 1.9)) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
+            float r1 = nHash12(wcell * 1.73 + 5.1), r2 = nHash12(wcell * 0.37 + 1.3), r3 = nHash12(wcell + 21.7);
+            vec4 zn = worldZone(wxz); vec4 pt = worldPath(wxz);
+            float dens = smoothstep(0.35, 0.75, zn.g) * (1.0 - smoothstep(0.1, 0.4, pt.r));
             float k = clamp((dens * fade - r3 * 0.35) * 5.0, 0.0, 1.0);
+            if (k <= 0.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
             float field = nNoise(wxz * 0.09);
             float hgt = mix(0.95, 1.25, r1) * (0.85 + 0.3 * field) * mix(0.75, 1.0, smoothstep(0.35, 0.8, zn.g)) * k;
             // cut: the stalks are lopped to stubble, and grow back slower than grass does
@@ -167,5 +170,7 @@ export class Wheat {
     this._pm.multiplyMatrices(game.camera.projectionMatrix, game.camera.matrixWorldInverse);
     this._fr.setFromProjectionMatrix(this._pm);
     this.group.visible = Math.hypot(dx, dz) < 50 && this._fr.intersectsBox(this._box);
+    // each ring only reaches so far from the camera: the dense near ring is drawn only when the field is within its reach
+    if (this.group.visible) { const gap = Math.hypot(Math.max(0, Math.abs(c.x - z.cx) - z.rx * 1.3), Math.max(0, Math.abs(c.z - z.cz) - z.rx * 1.3)); this.rings.forEach((r, i) => { r.visible = gap < this.defs[i].far * 1.05; }); }
   }
 }

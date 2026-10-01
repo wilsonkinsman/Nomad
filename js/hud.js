@@ -46,7 +46,10 @@ export class Hud {
     this.floatsEl.appendChild(el);
     this.floats.push({ el, p: pos.clone(), t: 0, dx: (Math.random() - 0.5) * 40 });
   }
-  setHealth(hp, max) { this.hpEl.style.width = Math.max(0, hp / max * 100) + '%'; this.hpBox.classList.toggle('low', hp / max < 0.3); }
+  setHealth(hp, max) {
+    const w = Math.max(0, hp / max * 100).toFixed(1) + '%';
+    if (w !== this._hpW) { this._hpW = w; this.hpEl.style.width = w; this.hpBox.classList.toggle('low', hp / max < 0.3); }
+  }
   hurtFlash() { const el = this.hurtEl; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on'); }
   setCrosshair(on, charge = 0) { this.crossEl.classList.toggle('on', on); this.crossEl.style.setProperty('--c', charge.toFixed(3)); this.crossEl.classList.toggle('full', charge >= 0.999); }
 
@@ -87,11 +90,12 @@ export class Hud {
     for (const zm of this.zoneMarks) zm.m.bearing = bearingTo(zm.z.cx, zm.z.cz);
     const L = game.sky.lightDir; this.sunMark.bearing = (Math.atan2(L.x, -L.z) * 180 / Math.PI + 360) % 360;
     this.sunMark.el.textContent = game.sky.night ? '☾' : '☼';
+    // only what changed is written to the page: the compass otherwise touches thirty elements a frame
     for (const m of this.marks) {
       let rel = ((m.bearing - heading + 540) % 360) - 180;
       const vis = Math.abs(rel) < 80;
-      m.el.style.display = vis ? '' : 'none';
-      if (vis) m.el.style.left = (W / 2 + rel * ppd) + 'px';
+      if (vis !== m.vis) { m.vis = vis; m.el.style.display = vis ? '' : 'none'; }
+      if (vis) { const left = Math.round((W / 2 + rel * ppd) * 2) / 2; if (left !== m.left) { m.left = left; m.el.style.left = left + 'px'; } }
     }
     // lands: title when you've been in a new one for a moment
     const s = P.surface;
@@ -105,8 +109,9 @@ export class Hud {
     // stamina
     const st = P.stamina / 100;
     this.stam.classList.toggle('show', st < 0.995);
-    this.stamFg.style.strokeDashoffset = (100.5 * (1 - st)).toFixed(1);
-    this.stamFg.style.stroke = P.exhausted ? '#c96a4a' : '';
+    const off = (100.5 * (1 - st)).toFixed(1), stroke = P.exhausted ? '#c96a4a' : '';
+    if (off !== this._off) { this._off = off; this.stamFg.style.strokeDashoffset = off; }
+    if (stroke !== this._stroke) { this._stroke = stroke; this.stamFg.style.stroke = stroke; }
     if (this.hintT > 0) { this.hintT -= dt; if (this.hintT <= 0) this.hintEl.classList.remove('show'); }
   }
 }
