@@ -1,7 +1,7 @@
 // Flash Roll (a skill, see skills.js). Tap the roll twice and he does not roll: he is gone, in a burst of
-// black lines, and the screen blinks out and in around the place the roll would have carried him to.
+// black lines, and he reappears at the place the roll would have carried him to; the screen is never blacked out.
 //   out   he fades away as black streaks sweep in           (OUT s)
-//   hold  nearly black; he is moved, the camera snaps      (HOLD s)
+//   hold  streaks at their thickest; he is moved, the camera snaps  (HOLD s)
 //   in    the streaks sweep away as he fades back in        (IN s)
 // The destination is worked out from the roll itself (the dive's launch speed, the flight and the
 // tumble that follows), then stopped short of trees and rocks and the edge of the plain.
@@ -118,7 +118,7 @@ export class Flash {
   }
 
   // black streaks in the direction of travel, coming in as k rises and going out as it falls, redrawn at
-  // about 20 frames a second so they flicker like ink; at the top the screen is black
+  // about 20 frames a second so they flicker like ink; the screen itself is never blacked out
   draw(dt) {
     const c = this.canvas, g = this.ctx, W = c.width, H = c.height, k = this.k;
     g.clearRect(0, 0, W, H);
@@ -126,21 +126,14 @@ export class Flash {
     this.seedT -= dt; if (this.seedT <= 0) { this.seedT = 0.05; this.seed = (Math.random() * 1e6) | 0; }
     const rnd = (() => { let s = this.seed; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; })();
     const D = Math.hypot(W, H);
-    // the dark closing in from the edges
-    const v = g.createRadialGradient(W / 2, H / 2, D * 0.05 * (1 - k), W / 2, H / 2, D * (0.75 - 0.45 * k));
-    v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, `rgba(0,0,0,${0.95 * k})`);
-    g.fillStyle = v; g.fillRect(0, 0, W, H);
     // the streaks
     g.save(); g.translate(W / 2, H / 2); g.rotate(this.angle); g.fillStyle = '#000';
-    const count = Math.round(130 * Math.min(1, k * 1.3));
+    const count = Math.round(150 * Math.min(1, k * 1.3));
     for (let i = 0; i < count; i++) {
       const off = (rnd() - 0.5) * D * 1.1, len = D * (0.15 + 0.7 * rnd()) * (0.35 + 0.65 * k), at = (rnd() - 0.5) * D * (1 - 0.5 * k);
-      const w = (0.6 + 5 * rnd() * rnd()) * (0.4 + 1.6 * k);
+      const w = (0.6 + 4 * rnd() * rnd()) * (0.4 + 1.2 * k);
       g.beginPath(); g.moveTo(at - len / 2, off); g.lineTo(at + len / 2, off - w / 2); g.lineTo(at + len / 2, off + w / 2); g.closePath(); g.fill();
     }
     g.restore();
-    // and the blink: black
-    const solid = smoothstep(0.78, 1, k);
-    if (solid > 0) { g.fillStyle = `rgba(0,0,0,${solid * 0.92})`; g.fillRect(0, 0, W, H); }
   }
 }
