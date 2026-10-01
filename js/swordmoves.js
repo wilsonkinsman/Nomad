@@ -79,6 +79,17 @@ export const MOVE_KEYS = {
     [0.36, { grip: R(1), sp: R(-0.04, 0.0, 0.19), sa: R(1.5, 1.35, 0), spine: R(0.06), chest: R(0.05), hips: R(0.04), stance: [0.08, -0.12, 0.05] }],
     [0.62, READY],
   ],
+  // Storm Call: the blade goes straight up over his head and he leans back under it while the sky gathers,
+  // holds it there through the strike (1.25 s) and the crackle, then brings it down to the ready pose
+  storm: [
+    [0.00, READY],
+    [0.30, { grip: R(1), sp: R(0, 0.22, 0.2), sa: R(0, 0.55, 0), spine: R(-0.05), chest: R(-0.12), hips: R(0.0), neck: R(0.1), stance: [0.1, -0.2, 0.04] }],
+    [0.60, { grip: R(1), sp: R(0, 0.33, 0.28), sa: R(0, 0.0, 0), spine: R(-0.18), chest: R(-0.3), hips: R(-0.05), neck: R(0.3), head: R(0.2), stance: [0.14, -0.26, 0.0] }],
+    [1.25, { grip: R(1), sp: R(0, 0.34, 0.29), sa: R(0, 0.0, 0), spine: R(-0.2), chest: R(-0.34), hips: R(-0.06), neck: R(0.32), head: R(0.22), stance: [0.14, -0.26, 0.0] }],
+    [1.34, { grip: R(1), sp: R(0, 0.32, 0.26), sa: R(0, 0.0, 0), spine: R(-0.12), chest: R(-0.22), hips: R(-0.03), neck: R(0.25), head: R(0.15), stance: [0.14, -0.26, 0.0] }],
+    [1.7, { grip: R(1), sp: R(0, 0.24, 0.2), sa: R(0, 0.6, 0), spine: R(0.0), chest: R(-0.08), hips: R(0.0), neck: R(0.05), stance: [0.1, -0.2, 0.04] }],
+    [2.2, READY],
+  ],
   // return the blade to the sheath over the left shoulder: both hands carry it out to his left and round
   // behind the shoulder (the sword's path, in the chest's frame, ends exactly where the arm-keyed pose
   // below begins), then the right hand lets go and the left slides the blade home

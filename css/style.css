@@ -109,10 +109,12 @@ input[type=range] { accent-color: var(--gold); width: 150px; }
 .fl.red { color: #ff6a55; }
 .fl.gold { color: var(--gold); }
 .fl.word { font-size: 24px; letter-spacing: 0.12em; font-style: italic; }
-#callout { position: fixed; left: 50%; top: 34%; transform: translateX(-50%); z-index: 12; pointer-events: none; font-family: var(--serif); font-weight: 600; font-size: 54px; letter-spacing: 0.3em; padding-left: 0.3em; opacity: 0; text-shadow: 0 2px 0 #000, 0 0 24px rgba(0,0,0,0.6); }
+.fl.zap { color: #a9c8ff; text-shadow: 0 2px 0 #000, 0 0 14px #4a7cff; }
+#callout { position: fixed; left: 50%; top: 34%; white-space: nowrap; transform: translateX(-50%); z-index: 12; pointer-events: none; font-family: var(--serif); font-weight: 600; font-size: 54px; letter-spacing: 0.3em; padding-left: 0.3em; opacity: 0; text-shadow: 0 2px 0 #000, 0 0 24px rgba(0,0,0,0.6); }
 #callout.show { animation: callout 0.9s ease-out forwards; }
 #callout.gold { color: var(--gold); }
 #callout.red { color: #ff6a55; }
+#callout.blue { color: #b4d0ff; text-shadow: 0 0 26px #4a7cff, 0 2px 0 #000; }
 @keyframes callout { 0% { opacity: 0; transform: translateX(-50%) scale(1.5); } 12% { opacity: 1; transform: translateX(-50%) scale(1); } 70% { opacity: 1; } 100% { opacity: 0; transform: translateX(-50%) scale(0.96); } }
 #hurt { position: fixed; inset: 0; z-index: 12; pointer-events: none; opacity: 0; box-shadow: inset 0 0 140px 30px rgba(190, 20, 10, 0.75); }
 #hurt.on { animation: hurt 0.55s ease-out; }
@@ -125,4 +127,12 @@ input[type=range] { accent-color: var(--gold); width: 150px; }
 #crosshair.full i { border-color: var(--gold); }
 #hp { position: fixed; left: 28px; bottom: 28px; width: 200px; height: 7px; z-index: 11; pointer-events: none; background: rgba(0,0,0,0.4); border: 1px solid rgba(244,237,225,0.35); opacity: 0.85; }
 #hp-fill { height: 100%; width: 100%; background: #c9d6a0; transition: width 0.25s; }
+/* Storm Call: the sky darkens at the edges while the blade is up, a white flash when the bolt lands, and a bar for how long the charge lasts */
+#storm-dim { position: fixed; inset: 0; z-index: 10; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at 50% 42%, rgba(10,16,36,0.1) 0%, rgba(8,12,30,0.42) 55%, rgba(3,5,16,0.85) 100%); }
+#storm-flash { position: fixed; inset: 0; z-index: 12; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at 50% 38%, #fff 0%, #dbe8ff 40%, #8fb2ff 100%); }
+#storm-flash.on { animation: stormflash 0.75s ease-out; }
+@keyframes stormflash { 0% { opacity: 0.8; } 10% { opacity: 0.18; } 20% { opacity: 0.6; } 100% { opacity: 0; } }
+#storm { position: fixed; left: 28px; bottom: 44px; width: 200px; height: 4px; z-index: 11; pointer-events: none; background: rgba(0,0,0,0.4); border: 1px solid rgba(160,196,255,0.4); opacity: 0; transition: opacity 0.3s; }
+#storm.on { opacity: 0.95; }
+#storm-fill { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #6aa0ff, #e4efff); box-shadow: 0 0 8px #6aa0ff; }
 #hp.low #hp-fill { background: #d9604a; }

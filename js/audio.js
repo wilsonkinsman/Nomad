@@ -153,6 +153,33 @@ export class Audio {
     } finally { this.bus = null; }
   }
 
+  // lightning: a crack right overhead, then the rolling rumble of the thunder
+  thunder() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime + 0.005;
+    this.bus = this.swordBus;
+    try {
+      this.grain(t, 3200, 0.5, 0.18, 0.7, 'highpass'); this.grain(t, 900, 0.5, 0.3, 0.6, 'lowpass'); this.thump(t, 60, 0.5, 0.7);
+      // the rumble: low noise that swells and dies away over a couple of seconds
+      const s = ctx.createBufferSource(); s.buffer = this.noise; s.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(420, t + 0.1); f.frequency.exponentialRampToValueAtTime(70, t + 2.6);
+      const g = ctx.createGain(); g.gain.setValueAtTime(0, t + 0.1); g.gain.linearRampToValueAtTime(0.55, t + 0.35); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.8);
+      s.connect(f).connect(g).connect(this.master); s.start(t + 0.1); s.stop(t + 2.9);
+    } finally { this.bus = null; }
+  }
+  // the cast: a rising whine and crackle while the lightning gathers
+  storm(kind, k = 1) {
+    if (!this.ctx) return;
+    this.bus = this.swordBus;
+    try {
+      const t = this.ctx.currentTime + 0.005;
+      if (kind === 'gather') this.sweep(t, 180, 2400, 3200, 5, 1.0, 0.1);
+      else if (kind === 'crackle') for (let i = 0; i < 3; i++) this.grain(t + Math.random() * 0.06, 2500 + Math.random() * 3500, 3, 0.012, 0.05 + 0.1 * k);
+      else if (kind === 'zap') { this.grain(t, 4000, 0.6, 0.07, 0.4); this.sweep(t, 6000, 1200, 400, 1.5, 0.18, 0.22); this.thump(t, 150, 0.09, 0.3); }
+      else if (kind === 'fizzle') this.sweep(t, 3000, 600, 200, 2, 0.5, 0.1);
+    } finally { this.bus = null; }
+  }
+
   // the Sky Slam landing: the ground booms
   slam() {
     if (!this.ctx) return;

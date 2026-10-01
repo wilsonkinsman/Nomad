@@ -113,6 +113,43 @@ export class Leaves {
     if (this.mesh.instanceColor) re(this.mesh.instanceColor.array, 3);
   }
 
+  // Lightning (or a blade full of it) scorches the litter: every leaf within r of (x, z) flashes to an ember and
+  // fades to charcoal, and stays black; the ones nearest the middle burn first. Returns how many caught.
+  singe(x, z, r, power = 1) {
+    const col = this.mesh.instanceColor; if (!col) return 0;
+    const c0 = Math.floor((x - r) / CELL), c1 = Math.floor((x + r) / CELL), d0 = Math.floor((z - r) / CELL), d1 = Math.floor((z + r) / CELL);
+    this.burning = this.burning || new Map();
+    this.game.burn?.stamp(x, z, r * 0.95, Math.min(1, power));          // and the ground under them is blackened
+    let n = 0;
+    for (let cx = c0; cx <= c1; cx++) for (let cz = d0; cz <= d1; cz++) {
+      const list = this.grid.get((cx + 1000) * 4096 + (cz + 1000));
+      if (!list) continue;
+      for (const i of list) {
+        if (i >= this.NG) continue;                  // the falling pool is left alone
+        const d = Math.hypot(this.pos[i * 3] - x, this.pos[i * 3 + 2] - z);
+        if (d > r || Math.random() > power * (1.15 - 0.6 * d / r)) continue;
+        const b = this.burning.get(i);
+        if (b) { b.t = Math.min(b.t, 0.2); } else { this.burning.set(i, { t: 0, delay: d / r * 0.35 }); n++; }
+      }
+    }
+    return n;
+  }
+  // embers fading to charcoal
+  burn(dt) {
+    if (!this.burning || !this.burning.size) return;
+    const col = this.mesh.instanceColor.array, G = this.game;
+    for (const [i, b] of this.burning) {
+      if (b.delay > 0) { b.delay -= dt; continue; }
+      b.t += dt;
+      const u = Math.min(1, b.t / 1.5), glow = Math.max(0, 1 - u * 1.6);
+      // ember orange at first, then charcoal
+      col[i * 3] = 0.05 + 0.045 * (1 - u) + 2.4 * glow; col[i * 3 + 1] = 0.04 + 0.03 * (1 - u) + 0.7 * glow; col[i * 3 + 2] = 0.035 + 0.02 * (1 - u) + 0.12 * glow;
+      if (b.t < 0.9 && Math.random() < dt * 1.8) G.particles.emit(Math.random() < 0.35 ? 'ember' : 'smoke', this.pos[i * 3], this.pos[i * 3 + 1] + 0.05, this.pos[i * 3 + 2], 0, 0.4 + Math.random() * 0.6, 0, 0.5, 1);
+      if (u >= 1) this.burning.delete(i);
+    }
+    this.mesh.instanceColor.needsUpdate = true;
+  }
+
   key(x, z) { return (Math.floor(x / CELL) + 1000) * 4096 + (Math.floor(z / CELL) + 1000); }
   register(i) {
     const k = this.key(this.pos[i * 3], this.pos[i * 3 + 2]);
@@ -198,6 +235,7 @@ export class Leaves {
 
   update(dt, game) {
     if (dt <= 0) return;
+    this.burn(dt);
     const P = game.player, W = game.wind;
     const sp = Math.hypot(P.vel.x, P.vel.z);
     const inLeaves = P.surface && P.surface.leaves > 0.2;

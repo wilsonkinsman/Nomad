@@ -10,6 +10,9 @@ const KINDS = {
   water: { col: [0.7, 0.75, 0.8], size: 0.03, grow: 0.0, drag: 0.8, grav: -9.8, life: 0.7, a: 0.8 },
   seed:  { col: [0.9, 0.8, 0.55], size: 0.02, grow: 0.0, drag: 4.5, grav: -0.9, life: 2.5, a: 0.9 },
   grass: { col: [0.42, 0.6, 0.22], size: 0.03, grow: 0.0, drag: 2.2, grav: -6.5, life: 0.9, a: 0.95 },
+  zap:   { col: [1.3, 2.2, 3.4], size: 0.04, grow: 0.0, drag: 2.5, grav: -1.5, life: 0.32, a: 1 },       // electric blue-white
+  smoke: { col: [0.2, 0.19, 0.18], size: 0.22, grow: 1.8, drag: 1.1, grav: 0.9, life: 2.4, a: 0.42 },     // rises and spreads
+  ember: { col: [3.2, 1.3, 0.35], size: 0.032, grow: 0.0, drag: 0.9, grav: 0.5, life: 1.2, a: 1 },
   spark: { col: [2.4, 1.9, 1.0], size: 0.05, grow: 0.0, drag: 1.1, grav: -7.0, life: 0.42, a: 1 },
   // what a cut sends flying: bigger, paler and slower to come down than the bits grass shakes loose
   clip:  { col: [0.62, 0.7, 0.26], size: 0.055, grow: 0.0, drag: 1.5, grav: -4.0, life: 1.9, a: 0.95 },

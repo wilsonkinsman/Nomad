@@ -7,6 +7,7 @@ import { GLSL_NOISE, ridge, fbm, smoothstep } from './util.js';
 
 const GLSL_TRAIL = /* glsl */`
 uniform sampler2D uTrample; uniform vec4 uTrampleRect;
+uniform sampler2D uBurn; uniform float uBurnSize;
 vec4 trailAt(vec2 p){ vec2 uv = (p - uTrampleRect.xy) * uTrampleRect.w; if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return vec4(0.0); return texture(uTrample, uv); }
 `;
 
@@ -83,6 +84,10 @@ export function buildTerrain(tex, ground, extra = {}) {
         vec4 tr = trailAt(wp);
         float kicked = clamp(max(tr.b * 0.55, tr.a) * 1.3, 0.0, 1.0) * W0.z * smoothstep(0.25, 0.75, nNoise(wp * 5.0) * 0.6 + 0.55);
         alb = mix(alb, vec3(0.085, 0.066, 0.05) * (0.8 + 0.4 * nNoise(wp * 11.0)), kicked * 0.75);
+        // ground scorched by lightning: charred black in a ragged patch, whatever grew or lay there
+        float bn = texture(uBurn, fract(wp / uBurnSize)).r;
+        float burnt = smoothstep(0.05, 0.45, bn * 1.2 + (nNoise(wp * 2.3) - 0.5) * 0.45) * (W0.x * 0.8 + W0.y * 0.55 + W0.z * 0.95 + W4 * 0.8);
+        alb = mix(alb, vec3(0.024, 0.02, 0.018) * (0.7 + 0.6 * nNoise(wp * 9.0)), clamp(burnt, 0.0, 1.0) * 0.93);
         // big, soft colour drifts so the meadow isn't one flat green
         float macro = nFbm(wp * 0.02);
         alb *= mix(0.82, 1.12, macro);

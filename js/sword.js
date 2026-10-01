@@ -16,6 +16,7 @@
 import * as THREE from 'three';
 import { groundY, surfaceAt } from './world.js';
 import { clamp, lerp, smoothstep, damp, dampAngle } from './util.js';
+import { STUN } from './storm.js';
 
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4();
 const CUT_AT = [0.3, 0.5, 0.7, 0.88, 1.0];      // points along the blade (guard 0, tip 1) that cut
@@ -33,7 +34,11 @@ export const MOVES = {
   rise:     { dur: 99, swap: 0.05, hit: null, chain: 0, cancel: null, next: null },
   plunge:   { dur: 99, hit: null, chain: 0, cancel: null, next: null },
   slamland: { dur: 0.6, hit: null, chain: 0.3, cancel: null, next: null },
+  // Storm Call: the blade held straight up while the sky gathers; the bolt lands on it at STORM_STRIKE
+  storm:    { dur: 2.2, swap: 0.08, hit: null, chain: 1.5, cancel: 1.95, next: 'overhead' },
 };
+const STORM_GATHER = 0.5, STORM_STRIKE = 1.25;
+const CHARGED = 1.5;      // what a blow does while the blade holds the storm
 const SLAM_RADIUS = 4.8;
 export const PARRY_WINDOW = [0.04, 0.34];     // seconds into the move that a blow is turned aside
 const PARRY_COOLDOWN = 0.22;
@@ -121,6 +126,15 @@ export class SwordRig {
     if (!on) this.trail.clear();
   }
 
+  // Storm Call: the steel glows blue-white and flickers while it holds the charge (k 0..1, set by the storm)
+  applyCharge(time) {
+    const k = this.chargeK || 0, e = this.steel.emissive;
+    if (k < 0.01) { if (this.wasCharged) { this.wasCharged = false; if (this.glintT == null) e.setScalar(0); } return; }
+    this.wasCharged = true;
+    const f = k * (0.75 + 0.25 * Math.sin(time * 37) * Math.sin(time * 23)), r = 0.22 * f, g = 0.5 * f, b = 1.1 * f;
+    if (this.glintT == null) e.setRGB(r, g, b); else e.setRGB(Math.max(e.r, r), Math.max(e.g, g), Math.max(e.b, b));
+  }
+
   // blade points in world space (origin of the trail ribbon)
   point(k, out) { return this.group.localToWorld(out.set(0, this.len * k, 0)); }
 
@@ -189,10 +203,11 @@ class Trail {
     const n = this.s.length;
     if (n < 2) { this.mesh.geometry.setDrawRange(0, 0); return; }
     const P = this.pos.array, C = this.col.array;
+    const ch = clamp((rig.chargeK || 0) * 1.5, 0, 1);
     this.s.forEach((p, i) => {
       const f = Math.pow(1 - p.age / this.life, 1.6);
       P.set([p.a.x, p.a.y, p.a.z, p.b.x, p.b.y, p.b.z], i * 6);
-      C.set([0.62, 0.74, 0.92, 0.0, 0.85, 0.92, 1.0, 0.24 * f], i * 8);
+      C.set([lerp(0.62, 0.3, ch), lerp(0.74, 0.58, ch), lerp(0.92, 1.0, ch), 0.0, lerp(0.85, 0.7, ch), lerp(0.92, 0.9, ch), 1.0, (0.24 + 0.3 * ch) * f], i * 8);
     });
     this.pos.needsUpdate = this.col.needsUpdate = true;
     this.mesh.geometry.setDrawRange(0, (n - 1) * 6);
@@ -210,6 +225,7 @@ export class Weapon {
     this.aim = 0; this.prevS = 0; this.struck = new Set(); this.lunged = false; this.swished = false;
     this.legs = 1; this._s = {};
     this.parryCool = 0; this.glinted = false; this.deflected = 0; this.plungeReq = 0; this.apexCue = false;
+    this.gathered = false; this.bolted = false;
     this.waves = [];         // the rings of a slam spreading over the ground
     this._bp = Array.from({ length: CUT_AT.length }, () => new THREE.Vector3()); this._bpOk = false;   // where the blade was last frame
     this.debug = null;
@@ -236,6 +252,14 @@ export class Weapon {
     if (this.kind === 'parry' && this.t < MOVES.parry.cancel) return;
     this.begin('parry');
   }
+  // R: hold the blade straight up and call the lightning down onto it (a skill that grows from Sky Slam)
+  storm() {
+    const P = this.player, G = this.game, S = G.skills;
+    if (!S || !S.has('storm') || !S.has('skyslam')) { G.hud?.hint('Learn Storm Call in the skill tree (K), under Sky Slam', 3); return; }
+    if (!P.grounded || P.state !== 'ground' || G.bow?.equipped || this.kind === 'storm') return;
+    if (this.kind && !this.waitingOn && !(MOVES[this.kind].cancel != null && this.t >= MOVES[this.kind].cancel)) return;
+    this.begin('storm');
+  }
   // the blade is up and a blow lands: turn it aside
   get parrying() { return this.kind === 'parry' && this.t >= PARRY_WINDOW[0] && this.t <= PARRY_WINDOW[1]; }
   // called by whatever is hitting him; true if the blow was turned aside (and the effects have played)
@@ -253,8 +277,8 @@ export class Weapon {
 
   begin(kind) {
     const P = this.player, G = this.game, M = MOVES[kind];
-    this.glinted = false; this.plungeReq = 0; this.apexCue = false;
-    this.kind = kind; this.lastKind = kind; this.t = 0; this.swapped = (kind === 'parry' || kind === 'rise') && this.rig.drawn || kind === 'plunge' || kind === 'slamland'; this.queued = null;
+    this.glinted = false; this.plungeReq = 0; this.apexCue = false; this.gathered = false; this.bolted = false;
+    this.kind = kind; this.lastKind = kind; this.t = 0; this.swapped = (kind === 'parry' || kind === 'rise' || kind === 'storm') && this.rig.drawn || kind === 'plunge' || kind === 'slamland'; this.queued = null;
     this.waitingOn = false; this.waiting = 0; this.struck.clear(); this.lunged = false; this.swished = false; this.landed = false; this.prevS = 0;
     // face where the camera looks
     const b = G.rig.basis();
@@ -313,10 +337,19 @@ export class Weapon {
     G.trample.stamp(px, pz, R * 1.1, 1, 0, 0, 1);
     for (let a = 0; a < 6.28; a += 0.5) G.cut.stamp(px + Math.cos(a) * R * 0.8, pz + Math.sin(a) * R * 0.8, R * 0.45, 1);
     // everything hurt in reach, hardest at the middle
+    const charged = !!(G.storm && G.storm.charged);
     for (const c of G.enemies?.targets || []) {
       if (c.dead) continue;
       const d = Math.hypot(c.x - px, c.z - pz);
-      if (d < R + c.r) c.onHit?.('slam', Math.round(lerp(48, 22, clamp(d / R, 0, 1))), c.x - px, c.z - pz);
+      if (d < R + c.r) {
+        c.onHit?.('slam', Math.round(lerp(48, 22, clamp(d / R, 0, 1)) * (charged ? CHARGED : 1)), c.x - px, c.z - pz, charged ? { zap: true, stun: STUN } : null);
+        if (charged) G.storm.zap(new THREE.Vector3(px, py + 0.3, pz), new THREE.Vector3(c.x, groundY(c.x, c.z) + 1.2, c.z));
+      }
+    }
+    if (charged) {         // the shockwave is full of lightning: arcs run out over the ground and the litter burns
+      G.leaves.singe(px, pz, R, 1);
+      for (let i = 0; i < 7; i++) { const a = Math.random() * 6.28, r = R * (0.5 + Math.random() * 0.5), x = px + Math.cos(a) * r, z = pz + Math.sin(a) * r; G.storm.zap(new THREE.Vector3(px, py + 0.25, pz), new THREE.Vector3(x, groundY(x, z) + 0.2, z)); }
+      G.audio?.storm('zap');
     }
     // the ground
     G.snow.onImpact(new THREE.Vector3(px, py, pz), this.aim, 'land'); G.snow.stamp(px, pz, 2.4, 2.4, 0, 1, 1);
@@ -326,7 +359,7 @@ export class Weapon {
     for (let i = 0; i < 46; i++) { const a = Math.random() * Math.PI * 2, r = Math.random() * R * 0.8; pz2.emit(surf.wheat > 0.35 ? 'chaff' : 'clip', px + Math.cos(a) * r, py + 0.2, pz + Math.sin(a) * r, Math.cos(a) * 3, 3 + Math.random() * 4, Math.sin(a) * 3, 1.5, 1); }
     this.waves.push({ x: px, y: py + 0.05, z: pz, t: 0 });
     G.audio?.slam(); G.rig.shake = 1; G.hitStop = Math.max(G.hitStop, 0.12);
-    G.hud?.callout('SKY SLAM', 'gold');
+    G.hud?.callout(charged ? 'STORM SLAM' : 'SKY SLAM', charged ? 'blue' : 'gold');
     this.begin('slamland'); this.w = 1;
   }
 
@@ -340,6 +373,7 @@ export class Weapon {
     this.parryCool = Math.max(0, this.parryCool - dt);
     if (input.attack()) this.press();
     if (input.parry()) this.parry();
+    if (input.stormKey()) this.storm();
     if (this.kind === 'rise' || this.kind === 'plunge') { this.airTick(dt); return; }
     // the legs take the sword stance only while he is not walking; blended, never switched
     this.legs = damp(this.legs, input.move().mag > 0.2 ? 0 : 1, 9, dt);
@@ -361,6 +395,10 @@ export class Weapon {
       this.moveScale = 0.35;
       if (!this.glinted && this.t >= PARRY_WINDOW[0]) { this.glinted = true; this.rig.glint(1); G.audio?.sword('parry'); }
       if (this.t >= M.dur - 0.01) this.parryCool = PARRY_COOLDOWN;
+    }
+    if (this.kind === 'storm') {
+      this.moveScale = 0.1;
+      if (!this.gathered && this.t >= STORM_GATHER) { this.gathered = true; G.audio?.storm('gather'); }
     }
     // the sword changes places
     if (M.swap != null && !this.swapped && this.t >= M.swap) {
@@ -417,6 +455,8 @@ export class Weapon {
     this.rig.trail.update(dt, this.rig, this.rig.drawn && (cutting || (M && M.hit && this.t > M.hit[0] - 0.08 && this.t < M.hit[1] + 0.1)));
     this.cutSweep(dt, M);
     this.rig.updateGlint(dt, this.game.camera);
+    this.rig.applyCharge(this.game.time);
+    if (this.kind === 'storm' && !this.freeze && dt > 0) this.stormTick();
     this.updateWaves(dt);
     if (M && M.hit && dt > 0 && !this.freeze) {
       const s = clamp((this.t - M.hit[0]) / (M.hit[1] - M.hit[0]), 0, 1);
@@ -424,6 +464,19 @@ export class Weapon {
       this.prevS = s;
     }
     this.updateDebug();
+  }
+
+  // Storm Call: the sky darkens while the blade is up; at the top of the cast the bolt lands on the tip
+  stormTick() {
+    const G = this.game, S = G.storm;
+    if (!S) return;
+    if (this.t < STORM_STRIKE) {
+      const k = smoothstep(STORM_GATHER, STORM_STRIKE, this.t);
+      S.setGather(k); G.rig.shake = Math.max(G.rig.shake, 0.12 * k);
+    } else if (!this.bolted) {
+      this.bolted = true;
+      S.strike(this.rig.point(1, new THREE.Vector3()), this.player);
+    }
   }
 
   // ---------------------------------------------------------------- hit scan
@@ -551,6 +604,7 @@ export class Weapon {
     // grass and wheat are cut where the blade really is (cutSweep), not pushed flat; other ground is shoved
     if (s.grass < 0.3 && s.wheat < 0.3) G.trample.stamp(x, z, r, clamp(0.55 + power * 0.4, 0, 1), dx, dz, 1);
     if (s.leaves > 0.15) G.leaves.kick(x, z, r + 0.3, 0.8 + power, dx * (kind === 'thrust' ? 9 : 6), dz * (kind === 'thrust' ? 9 : 6));
+    if (s.leaves > 0.15 && G.storm && G.storm.charged) G.leaves.singe(x, z, r + 0.4, 0.5);
     if (Math.random() < 0.7) {
       if (s.wheat > 0.35) pz.emit('seed', x, y + 0.55, z, dx * 3, 1.5, dz * 3, 1.2, kind === 'cut' ? 4 : 2);
       else if (s.snow > 0.4) pz.emit('powder', x, y + G.snow.depthAt(x, z), z, dx * 2, 1.0, dz * 2, 1.0, 2);
@@ -578,6 +632,11 @@ export class Weapon {
     else if (s.snow > 0.4) pz.emit('snow', x, y + G.snow.depthAt(x, z), z, F.fx * 1.5, 2.6, F.fz * 1.5, 2.0, 40);
     else if (s.grass > 0.3 && s.path < 0.4) pz.emit('grass', x, y + 0.2, z, F.fx * 2, 3.0, F.fz * 2, 2.0, 14);
     pz.emit('dust', x, y + 0.05, z, F.fx * 1.2, 1.0, F.fz * 1.2, 1.4, 12);
+    if (G.storm && G.storm.charged) {
+      G.leaves.singe(x, z, 2.6, 1);
+      for (let i = 0; i < 20; i++) { const a = Math.random() * 6.28, s2 = 2 + Math.random() * 5; pz.emit('zap', x, y + 0.2, z, Math.cos(a) * s2, 1 + Math.random() * 3, Math.sin(a) * s2, 1, 1); }
+      G.audio?.storm('zap');
+    }
     G.audio?.sword('slam');
     G.rig.shake = Math.max(G.rig.shake, 0.32);
     G.hitStop = Math.max(G.hitStop, 0.09);
@@ -590,6 +649,14 @@ export class Weapon {
       if (s.snow > 0.4) pz.emit('powder', x, y + G.snow.depthAt(x, z), z, F.fx * 3, 1.2, F.fz * 3, 1.2, 3);
       else pz.emit('dust', x, y + 0.1, z, F.fx * 3, 0.7, F.fz * 3, 0.8, 2);
     }
+  }
+
+  // a charged blow: a little bolt from the blade to what it hit, and the leaves around that spot catch
+  zapHit(x, z, y) {
+    const G = this.game, S = G.storm, pz = G.particles;
+    S.zap(this.rig.point(0.8, new THREE.Vector3()), new THREE.Vector3(x, y, z));
+    G.audio?.storm('zap'); G.leaves.singe(x, z, 2.2, 0.9);
+    for (let i = 0; i < 14; i++) pz.emit('zap', x, y, z, (Math.random() - 0.5) * 5, Math.random() * 3.5, (Math.random() - 0.5) * 5, 0.8, 1);
   }
 
   // trees, rocks, posts the volume touches (once per swing each)
@@ -605,8 +672,10 @@ export class Weapon {
         const dist = Math.sqrt(d2);
         if (!test(c, dx, dz, dist)) continue;
         this.struck.add(c);
+        const charged = !!(G.storm && G.storm.charged);
         if (c.onHit) {                 // something that takes damage (the dummy, the practice enemy)
-          c.onHit(kind === 'draw' ? 'cut' : kind, HURT[kind] ?? 15, dx, dz);
+          c.onHit(kind === 'draw' ? 'cut' : kind, Math.round((HURT[kind] ?? 15) * (charged ? CHARGED : 1)), dx, dz, charged ? { zap: true, stun: STUN } : null);
+          if (charged) this.zapHit(c.x, c.z, groundY(c.x, c.z) + 1.2);
           G.audio?.sword('hit'); G.rig.shake = Math.max(G.rig.shake, 0.2); G.hitStop = Math.max(G.hitStop, 0.07);
           const hp = new THREE.Vector3(c.x, groundY(c.x, c.z) + 1.1, c.z);
           for (let i = 0; i < 8; i++) G.particles.emit('dust', hp.x, hp.y, hp.z, -dx / dist * 1.5, 0.8, -dz / dist * 1.5, 1.4, 1);
@@ -615,6 +684,7 @@ export class Weapon {
         const k = Math.max(0.01, dist - c.r), px = F.x + dx / dist * k, pz = F.z + dz / dist * k, y = groundY(px, pz) + 0.9;
         G.particles.emit('dust', px, y, pz, -dx / dist, 0.9, -dz / dist, 1.2, 9);
         G.particles.emit('seed', px, y, pz, -dx / dist, 1.0, -dz / dist, 1.2, 5);
+        if (charged) this.zapHit(px, pz, y);
         G.audio?.sword('hit');
         G.rig.shake = Math.max(G.rig.shake, 0.12);
         G.hitStop = Math.max(G.hitStop, 0.06);

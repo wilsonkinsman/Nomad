@@ -4,7 +4,8 @@
 //   - then strikes (0.16 s). If your parry is up at any moment of the strike the blow is turned aside, the
 //     enemy reels, and your next hit on it counts double. If not, you take 15 damage. A roll or flash
 //     through it dodges it.
-// Both are targets for the sword, the bow and the slam: anything in `targets` has {x, z, r, onHit()}.
+// Both are targets for the sword, the bow and the slam: anything in `targets` has {x, z, r, onHit(kind, dmg, dx, dz, fx)}.
+// `fx` is set by a storm-charged blow ({ zap, stun }): the dummy shivers with it, the enemy is stunned stock-still.
 import * as THREE from 'three';
 import { groundY } from './world.js';
 import { clamp, damp, dampAngle } from './util.js';
@@ -35,7 +36,7 @@ class Dummy {
     this.rx = 0; this.rz = 0; this.vx = 0; this.vz = 0;
     this.total = 0; this.last = 0; this.hits = 0; this.t0 = 0;
     this.sign = this.buildSign(x, z);
-    this.target = { x, z, r: 0.5, y0: 0, y1: 2.0, dummy: this, onHit: (k, dmg, dx, dz) => this.hit(dmg, dx, dz, k) };
+    this.target = { x, z, r: 0.5, y0: 0, y1: 2.0, dummy: this, onHit: (k, dmg, dx, dz, fx) => this.hit(dmg, dx, dz, k, fx) };
     this.collider = { x, z, r: 0.42 };
   }
   buildSign(x, z) {
@@ -59,15 +60,16 @@ class Dummy {
     this.tex.needsUpdate = true;
   }
   dps() { return this.total / Math.max(1, this.game.time - this.t0); }
-  hit(dmg, dx, dz, kind) {
+  hit(dmg, dx, dz, kind, fx) {
     const G = this.game, l = Math.hypot(dx, dz) || 1;
     if (this.game.time - this.lastHitAt > 6 || this.lastHitAt === undefined) { this.total = 0; this.hits = 0; this.t0 = this.game.time; }
     this.lastHitAt = this.game.time;
     this.total += dmg; this.hits++; this.last = dmg;
     this.vx += dz / l * 2.2; this.vz += -dx / l * 2.2;                      // rocks away from the blow
-    G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 2.0, this.pos.z), String(dmg), dmg >= 30 ? 'big' : '');
+    G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 2.0, this.pos.z), String(dmg), fx && fx.zap ? 'zap big' : dmg >= 30 ? 'big' : '');
     this.drawSign();
     this.flash = 1;
+    if (fx && fx.zap) this.zapT = 1;
     return true;
   }
   update(dt) {
@@ -75,7 +77,12 @@ class Dummy {
     this.vx += (-this.rx * 60 - this.vx * 5) * dt; this.vz += (-this.rz * 60 - this.vz * 5) * dt;
     this.rx += this.vx * dt; this.rz += this.vz * dt;
     this.tilt.rotation.set(this.rx, 0, this.rz);
-    if (this.flash > 0) { this.flash = Math.max(0, this.flash - dt * 5); for (const m of this.mats) m.emissive.setScalar(this.flash * 0.35); }
+    if (this.zapT > 0) {                     // a charged blow: it shivers blue and sparks
+      this.zapT = Math.max(0, this.zapT - dt * 0.8);
+      const k = this.zapT * (0.5 + 0.5 * Math.sin(this.game.time * 50)), G = this.game;
+      for (const m of this.mats) m.emissive.setRGB(0.12 * k, 0.4 * k, 1.0 * k);
+      if (Math.random() < dt * 50 * this.zapT) G.particles.emit('zap', this.pos.x + (Math.random() - 0.5) * 0.6, this.pos.y + 0.8 + Math.random() * 1.1, this.pos.z + (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 2, 1 + Math.random() * 2, (Math.random() - 0.5) * 2, 0.6, 1);
+    } else if (this.flash > 0) { this.flash = Math.max(0, this.flash - dt * 5); for (const m of this.mats) m.emissive.setScalar(this.flash * 0.35); }
     if (this.lastHitAt !== undefined && this.game.time - this.lastHitAt > 6 && this.total) { this.total = 0; this.hits = 0; this.last = 0; this.drawSign(); }
   }
 }
@@ -110,13 +117,13 @@ class Trainee {
     this.sword = mesh(new THREE.BoxGeometry(0.06, 0.06, 1.0), this.bladeM, 0, -0.52, 0.45);
     this.armR.add(this.sword); this.armR.add(mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.2, 6).rotateX(Math.PI / 2), wood, 0, -0.52, 0));
     game.scene.add(this.group);
-    this.target = { x, z, r: 0.5, y0: 0, y1: 1.9, enemy: this, get dead() { return this.enemy.state === 'dead'; }, onHit: (k, dmg, dx, dz) => this.hurt(dmg, dx, dz, k) };
+    this.target = { x, z, r: 0.5, y0: 0, y1: 1.9, enemy: this, get dead() { return this.enemy.state === 'dead'; }, onHit: (k, dmg, dx, dz, fx) => this.hurt(dmg, dx, dz, k, fx) };
     this.collider = { x, z, r: 0.4 };
     this.setState('idle');
   }
   setState(s) { this.state = s; this.t = 0; this.resolved = false; }
 
-  hurt(dmg, dx, dz, kind) {
+  hurt(dmg, dx, dz, kind, fx) {
     if (this.state === 'dead') return false;
     const G = this.game, l = Math.hypot(dx, dz) || 1;
     let crit = false;
@@ -127,7 +134,14 @@ class Trainee {
     G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 2.1, this.pos.z), (crit ? 'CRIT ' : '') + dmg, crit || dmg >= 30 ? 'big' : '');
     if (this.hp <= 0) { this.setState('dead'); G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 2.4, this.pos.z), 'DEFEATED', 'gold word'); }
     else if (this.state === 'windup' && kind !== 'arrow' && dmg >= 25) this.setState('stagger');      // a heavy blow breaks its wind-up
+    if (fx && fx.stun && this.hp > 0) this.stun(fx.stun);
     return true;
+  }
+  // a storm-charged blow: it stops dead, wherever it was and whatever it was doing, and shakes with the current
+  stun(secs) {
+    const G = this.game;
+    if (this.state !== 'stun') { this.setState('stun'); G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 2.4, this.pos.z), 'STUNNED', 'zap word'); }
+    this.t = 0; this.stunFor = secs;
   }
   parried() {
     const G = this.game;
@@ -186,6 +200,11 @@ class Trainee {
         if (this.t >= 1.5) { this.cool = 0.3; this.setState(dist < REACH + 1 ? 'chase' : 'idle'); }
         break;
       }
+      case 'stun':
+        lean = 0.06 * Math.sin(G.time * 55) - 0.12; windK = 0; strikeK = 0; glow = 0.9;
+        if (Math.random() < dt * 45) G.particles.emit('zap', this.pos.x + (Math.random() - 0.5) * 0.7, this.pos.y + 0.2 + Math.random() * 1.9, this.pos.z + (Math.random() - 0.5) * 0.7, (Math.random() - 0.5) * 2.5, 0.5 + Math.random() * 2, (Math.random() - 0.5) * 2.5, 0.6, 1);
+        if (this.t >= this.stunFor) { this.cool = 0.5; this.setState(dist < REACH + 1 ? 'chase' : 'idle'); }
+        break;
       case 'dead': {
         if (this.t > 4) { this.hp = this.maxHp; this.pos.set(this.home.x, 0, this.home.y); this.cool = 1.5; this.setState('idle'); }
         break;
@@ -211,8 +230,12 @@ class Trainee {
     this.armL.rotation.x = this.armR.rotation.x * 0.8; this.armL.rotation.z = 0.12; this.armR.rotation.z = -0.12;
     // glow
     this.pulse = glow > 0 ? 0.6 + 0.4 * Math.sin(G.time * 30) : 0;
+    // eyes and blade go blue while he is stunned
+    const stunned = this.state === 'stun';
+    this.eyeM.emissive.setHex(stunned ? 0x4a8cff : 0xff2010); this.bladeM.emissive.setHex(stunned ? 0x4a8cff : 0xff2010);
     this.eyeM.emissiveIntensity = glow * 2.5 * (0.7 + 0.3 * this.pulse); this.bladeM.emissiveIntensity = glow * 1.4;
-    if (this.flash > 0) { this.flash = Math.max(0, this.flash - dt * 5); for (const m of this.mats) m.emissive.setScalar(this.flash * 0.4); }
+    if (stunned) { const k = 0.35 + 0.3 * Math.sin(G.time * 45); for (const m of this.mats) m.emissive.setRGB(0.1 * k, 0.4 * k, 1.0 * k); this.wasStun = true; }
+    else if (this.flash > 0 || this.wasStun) { this.flash = Math.max(0, this.flash - dt * 5); this.wasStun = false; for (const m of this.mats) m.emissive.setScalar(this.flash * 0.4); }
   }
 }
 const lerp = (a, b, t) => a + (b - a) * t;

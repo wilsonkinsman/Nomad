@@ -27,6 +27,7 @@ import { Skills } from './skills.js';
 import { Flash } from './flash.js';
 import { Enemies, TRAINING } from './enemies.js';
 import { Bow } from './bow.js';
+import { Storm } from './storm.js';
 
 const QUALITY = {
   low:    { ratio: 0.6,  msaa: 0, shadow: 1024, veg: 0.5 },
@@ -105,6 +106,8 @@ async function boot() {
   game.trample = new StampField(renderer, { kind: 'veg', res: 512, minX: -128, minZ: -128, size: 256 });
   Object.assign(game.terrainExtra, { uTrample: game.trample.uniform, uTrampleRect: { value: game.trample.rect } });
   game.cut = new CutField(renderer);          // where the sword has cut the grass and wheat, which then grows back
+  game.burn = new CutField(renderer, { growTime: 300 });      // where lightning has scorched the ground: it fades over five minutes
+  Object.assign(game.terrainExtra, { uBurn: game.burn.uniform, uBurnSize: game.burn.sizeUniform });
   game.particles = new Particles(game, softSprite());
   game.trees = new Trees(game, tx);
   game.props = new Props(game, tx);
@@ -124,8 +127,9 @@ async function boot() {
   game.enemies = new Enemies(game);
   game.player.colliders.push(...game.enemies.colliders);
   game.bow = new Bow(game);
+  game.storm = new Storm(game);
   game.systems.push(game.grass, game.wheat, game.snow, game.leaves, game.props, game.particles, game.fireflies, game.hud, game.audio);
-  game.systems.push(game.flash, game.enemies, game.bow);
+  game.systems.push(game.flash, game.enemies, game.bow, game.storm);
   game.systems.unshift(game.contact);    // body hitboxes stamp before the snow and leaves update
   wireEvents();
   game.sky.setNight(settings.night);
@@ -283,6 +287,7 @@ function update(dt) {
   for (const s of game.systems) s.update?.(dt, game);
   game.trample.update(dt);
   game.cut.update(dt);
+  game.burn.update(dt);
   rig.update(dt, game.player, input, inMenu);
   game.sky.update(dt, game.player.pos);
   game.sky.followCamera(camera);
