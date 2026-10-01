@@ -1,0 +1,458 @@
+// The ronin's sword. Two parts:
+//
+// SwordRig: the visible sword. On his back it is the sculpt's sheathed sword (a mesh of the model).
+// Once drawn, that mesh disappears and a hand sword appears in his left hand (the hilt over his left
+// shoulder is on that side): the same hilt from the sculpt plus a blade built here, with a trail
+// that follows the blade through each cut.
+//
+// Weapon: the combo. Press attack (click, F, gamepad Y): draw and cut -> overhead cut -> thrust ->
+// sheathe, and round again. Each move has its own hitbox:
+//   cut       a wide fan around the front and both sides, reaching 1.45 m: things close to him
+//   overhead  a narrow box straight ahead, 1.6 m, that lands on the ground at the end of the chop
+//   thrust    a thin lane straight ahead, 2 m, longer than either of the others
+// Hits do what the swing would: lay grass and wheat over along the cut, scatter leaves, throw snow
+// and chaff, thud against trees and posts. Press H to see the three volumes.
+import * as THREE from 'three';
+import { groundY, surfaceAt } from './world.js';
+import { clamp, lerp, smoothstep, damp, dampAngle } from './util.js';
+
+const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4();
+
+// ---------------------------------------------------------------- the moves
+export const MOVES = {
+  //            seconds   sword changes hands   active cut     can chain from    next       step forward (at s, m/s)
+  draw:     { dur: 0.84, swap: 0.24, hit: [0.42, 0.60], chain: 0.30, cancel: 0.64, next: 'overhead', lunge: [0.34, 1.7], swish: [0.40, 'cut'] },
+  overhead: { dur: 0.70, hit: [0.32, 0.46], chain: 0.20, cancel: 0.54, next: 'thrust', lunge: [0.26, 2.6], swish: [0.28, 'overhead'] },
+  thrust:   { dur: 0.66, hit: [0.26, 0.40], chain: 0.16, cancel: null, next: null, lunge: [0.20, 4.6], swish: [0.20, 'thrust'] },
+  sheathe:  { dur: 0.66, swap: 0.38, hit: null, chain: 0.34, cancel: null, next: null },
+};
+const COMBO_WINDOW = 0.65;      // seconds he waits, blade out, for the next press before sheathing
+
+// the three hitboxes, in his frame: forward (a), left (b), metres; angles in radians
+export const HIT = {
+  cut: { reach: 1.45, half: 1.85, wedge: 0.55 },        // the fan sweeps from 106 degrees left to 106 degrees right
+  overhead: { from: 0.15, to: 1.75, half: 0.5 },
+  thrust: { from: 0.25, to: 2.25, half: 0.2 },
+};
+
+// ---------------------------------------------------------------- blade geometry
+function buildBlade(len, width = 0.056, thick = 0.012) {
+  const N = 28, curve = 0.045;
+  const pos = [], idx = [];
+  const prof = (w, t) => [[0, w / 2], [t / 2, w / 2 - w * 0.3], [t / 2, -w / 2], [-t / 2, -w / 2], [-t / 2, w / 2 - w * 0.3]];   // [x thickness, z width], edge at +z
+  for (let i = 0; i <= N; i++) {
+    const s = i / N, y = s * len;
+    const tip = s > 0.92 ? Math.max(0, 1 - (s - 0.92) / 0.08) : 1;
+    const w = width * (1 - 0.16 * s) * (0.15 + 0.85 * tip), t = thick * (1 - 0.3 * s) * tip;
+    for (const [px, pz] of prof(w, t)) pos.push(px, y, pz - curve * s * s);
+  }
+  for (let i = 0; i < N; i++) for (let k = 0; k < 5; k++) {
+    const a = i * 5 + k, b = i * 5 + (k + 1) % 5, c = a + 5, d = b + 5;
+    idx.push(a, c, b, b, c, d);
+  }
+  let g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx);
+  g = g.toNonIndexed(); g.computeVertexNormals();
+  return g;
+}
+
+// ---------------------------------------------------------------- the visible sword
+export class SwordRig {
+  constructor(model, o = {}) {
+    this.model = model;
+    this.back = model.backSword;
+    this.hand = model.g.LeftHand;
+    this.len = o.len ?? 0.80;
+    this.group = new THREE.Group();            // origin at the guard, +Y toward the tip
+    const hilt = model.hiltMesh;
+    hilt.castShadow = true; hilt.receiveShadow = true; hilt.frustumCulled = false;
+    this.group.add(hilt);
+    this.steel = new THREE.MeshStandardMaterial({ color: 0xcfd6dc, metalness: 0.92, roughness: 0.26, side: THREE.DoubleSide });
+    this.blade = new THREE.Mesh(buildBlade(this.len), this.steel);
+    this.blade.castShadow = true; this.blade.frustumCulled = false;
+    this.group.add(this.blade);
+    this.hand.add(this.group);
+    this.mount(o.grip || {});
+    this.trail = new Trail(model);
+    this.setDrawn(false);
+  }
+
+  // Put the sword in the fist. At the bind pose (arm hanging, fist at his side) the blade points along
+  // `blade` and its edge faces `edge` (character space: x left, y up, z forward); `at` is how far
+  // the guard sits in front of the fist along the hilt.
+  mount(g) {
+    const M = this.model, hand = this.hand;
+    const blade = new THREE.Vector3(...(g.blade || [0, -0.57, 0.82])).normalize();
+    let edge = new THREE.Vector3(...(g.edge || [-1, 0, 0]));
+    edge.addScaledVector(blade, -edge.dot(blade)).normalize();
+    const flat = new THREE.Vector3().crossVectors(blade, edge);          // x axis: the flat of the blade
+    const Q = new THREE.Quaternion().setFromRotationMatrix(_m.makeBasis(flat, blade, edge));
+    const hp = M.bindPos.get(hand), hq = M.bindW.get(hand);
+    const mid = M.g.LeftHandMiddle1 ? M.bindPos.get(M.g.LeftHandMiddle1) : hp;
+    const fist = hp.clone().lerp(mid, g.fistK ?? 0.6);
+    const at = g.at ?? 0.30;
+    const guard = fist.clone().addScaledVector(blade, at).add(new THREE.Vector3(...(g.shift || [0, 0, 0])));
+    const hqi = hq.clone().invert();
+    this.group.position.copy(guard).sub(hp).applyQuaternion(hqi);
+    this.group.quaternion.copy(hqi).multiply(Q);
+  }
+
+  setDrawn(on) {
+    this.drawn = on;
+    if (this.back) this.back.visible = !on;
+    this.group.visible = on;
+    if (!on) this.trail.clear();
+  }
+
+  // blade points in world space (origin of the trail ribbon)
+  point(k, out) { return this.group.localToWorld(out.set(0, this.len * k, 0)); }
+}
+
+// ---------------------------------------------------------------- slash trail
+class Trail {
+  constructor(model, max = 22) {
+    this.model = model; this.max = max; this.s = [];    // samples {a: Vector3, b: Vector3, t}
+    const g = new THREE.BufferGeometry();
+    this.pos = new THREE.BufferAttribute(new Float32Array(max * 2 * 3), 3).setUsage(THREE.DynamicDrawUsage);
+    this.col = new THREE.BufferAttribute(new Float32Array(max * 2 * 4), 4).setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute('position', this.pos); g.setAttribute('color', this.col);
+    const idx = []; for (let i = 0; i < max - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    g.setIndex(idx); g.setDrawRange(0, 0);
+    this.mesh = new THREE.Mesh(g, new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      vertexShader: 'attribute vec4 color; varying vec4 vC; void main() { vC = color; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: 'varying vec4 vC; void main() { gl_FragColor = vec4(vC.rgb, vC.a); }',
+    }));
+    this.mesh.frustumCulled = false; this.mesh.renderOrder = 12;
+    this.life = 0.13;
+  }
+  clear() { this.s.length = 0; this.mesh.geometry.setDrawRange(0, 0); }
+  update(dt, rig, active) {
+    for (const p of this.s) p.age += dt;
+    while (this.s.length && this.s[0].age > this.life) this.s.shift();
+    if (active) {
+      rig.point(0.86, _v); const a = _v.clone(); rig.point(1.0, _v); const b = _v.clone();
+      // the blade jumped (the sword was just drawn, or the move changed): start a fresh ribbon
+      const last = this.s[this.s.length - 1];
+      if (last && last.b.distanceTo(b) > 1.1) this.s.length = 0;
+      this.s.push({ a, b, age: 0 });
+      if (this.s.length > this.max) this.s.shift();
+    }
+    const n = this.s.length;
+    if (n < 2) { this.mesh.geometry.setDrawRange(0, 0); return; }
+    const P = this.pos.array, C = this.col.array;
+    this.s.forEach((p, i) => {
+      const f = Math.pow(1 - p.age / this.life, 1.6);
+      P.set([p.a.x, p.a.y, p.a.z, p.b.x, p.b.y, p.b.z], i * 6);
+      C.set([0.62, 0.74, 0.92, 0.0, 0.85, 0.92, 1.0, 0.24 * f], i * 8);
+    });
+    this.pos.needsUpdate = this.col.needsUpdate = true;
+    this.mesh.geometry.setDrawRange(0, (n - 1) * 6);
+  }
+}
+
+// ---------------------------------------------------------------- the combo
+export class Weapon {
+  constructor(game, player, rig) {
+    this.game = game; this.player = player; this.rig = rig;
+    this.kind = null; this.t = 0; this.swapped = false;
+    this.lastKind = 'draw'; this.w = 0;
+    this.queued = null; this.buffer = 0; this.waiting = 0; this.waitingOn = false;
+    this.moveScale = 1; this.busy = false; this.faceLock = false;
+    this.aim = 0; this.prevS = 0; this.struck = new Set(); this.lunged = false; this.swished = false;
+    this.legs = 1; this._s = {};
+    this.debug = null;
+    game.scene.add(rig.trail.mesh);
+  }
+
+  // --- input -------------------------------------------------------------------------------
+  press() {
+    const P = this.player;
+    if (!P.grounded || P.state !== 'ground') return;
+    if (!this.kind) return this.begin('draw');
+    const M = MOVES[this.kind];
+    if (this.kind === 'sheathe') { if (this.swapped) this.begin('draw'); else this.queued = 'draw'; return; }
+    if (this.waitingOn) return this.begin(M.next);
+    this.buffer = 0.35;                         // remembered a moment, so an early press still chains
+  }
+
+  begin(kind) {
+    const P = this.player, G = this.game, M = MOVES[kind];
+    this.kind = kind; this.lastKind = kind; this.t = 0; this.swapped = false; this.queued = null;
+    this.waitingOn = false; this.waiting = 0; this.struck.clear(); this.lunged = false; this.swished = false; this.landed = false; this.prevS = 0;
+    // face where the camera looks
+    const b = G.rig.basis();
+    this.aim = Math.atan2(b.fx, b.fz);
+    if (kind === 'draw') this.rig.trail.clear();
+  }
+
+  reset() {
+    this.kind = null; this.t = 0; this.w = 0; this.queued = null; this.waitingOn = false; this.buffer = 0;
+    this.moveScale = 1; this.busy = false; this.faceLock = false;
+    this.rig.setDrawn(false);
+  }
+
+  // dev: hold a move at an exact time (captures), and let go again
+  force(kind, t) {
+    const M = MOVES[kind];
+    this.freeze = true; this.kind = kind; this.lastKind = kind; this.t = t; this.w = 1;
+    this.rig.setDrawn(kind === 'sheathe' ? !(t >= M.swap) : (M.swap == null || t >= M.swap));
+  }
+  release() { this.freeze = false; this.reset(); }
+
+  // --- per frame, before the player moves --------------------------------------------------
+  tick(dt, inMenu) {
+    const P = this.player, G = this.game, input = G.input;
+    if (this.freeze) { P.vel.set(0, 0, 0); this.moveScale = 0; this.faceLock = true; return; }
+    if (inMenu) { if (this.kind) this.reset(); return; }
+    if (P.state === 'dive' || P.state === 'roll' || P.state === 'flop' || P.state === 'getup') { if (this.kind) this.reset(); this.w = 0; return; }
+    if (input.attack()) this.press();
+    // the legs take the sword stance only while he is not walking; blended, never switched
+    this.legs = damp(this.legs, input.move().mag > 0.2 ? 0 : 1, 9, dt);
+    this.buffer = Math.max(0, this.buffer - dt);
+
+    if (!this.kind) {
+      this.w = Math.max(0, this.w - dt * 9);
+      this.moveScale = 1; this.busy = false; this.faceLock = false;
+      return;
+    }
+    const M = MOVES[this.kind];
+    this.t += dt;
+    this.busy = this.kind !== 'sheathe';
+    this.faceLock = this.kind !== 'sheathe';
+    this.moveScale = this.kind === 'sheathe' ? 0.7 : this.waitingOn ? 0.55 : 0.3;
+    if (this.faceLock) P.heading = dampAngle(P.heading, this.aim, 16, dt);
+
+    // the sword changes places
+    if (M.swap != null && !this.swapped && this.t >= M.swap) {
+      this.swapped = true;
+      this.rig.setDrawn(this.kind !== 'sheathe');
+      G.audio?.sword(this.kind === 'sheathe' ? 'sheathe' : 'draw');
+    }
+    // step forward with the swing
+    if (M.lunge && !this.lunged && this.t >= M.lunge[0]) {
+      this.lunged = true;
+      const fx = Math.sin(this.aim), fz = Math.cos(this.aim);
+      P.vel.x += fx * M.lunge[1]; P.vel.z += fz * M.lunge[1];
+    }
+    if (M.swish && !this.swished && this.t >= M.swish[0]) { this.swished = true; G.audio?.sword(M.swish[1]); }
+
+    // chaining: a press during the move is held until the move allows it
+    if (this.buffer > 0 && M.next && this.t >= M.chain && !this.queued) { this.queued = M.next; this.buffer = 0; }
+    if (this.queued && (M.cancel != null ? this.t >= M.cancel : this.t >= M.dur)) {
+      const q = this.queued;
+      if (this.kind === 'sheathe' && !this.swapped) { /* wait for the sword to be back */ } else return this.begin(q);
+    }
+    if (this.t >= M.dur) {
+      if (this.kind === 'sheathe') { this.kind = null; this.t = 0; return; }
+      if (M.next) {
+        if (!this.waitingOn) { this.waitingOn = true; this.waiting = 0; }
+        this.waiting += dt;
+        if (this.waiting >= COMBO_WINDOW) this.begin('sheathe');
+      } else this.begin('sheathe');      // the thrust ends the combo
+    }
+    // layer weight: in quickly, out as the sheathing finishes
+    const tgt = this.kind === 'sheathe' && this.t > M.dur - 0.16 ? 0 : 1;
+    if (tgt > this.w) this.w = Math.min(1, this.w + dt * 12);
+    else if (tgt < this.w) this.w = Math.max(0, this.w - dt * 8);
+  }
+
+  // what the animator needs
+  get layer() {
+    const kind = this.kind || this.lastKind;
+    const t = this.kind ? Math.min(this.t, MOVES[kind].dur) : MOVES[kind].dur;
+    return { kind, t, w: this.w, legs: this.legs };
+  }
+
+  // The lunge throws him forward at several m/s, which would spin the walk cycle up under the swing.
+  // The gait sees only what he is doing on purpose.
+  animSpeed(hs) {
+    if (!this.kind && this.w < 0.01) return hs;
+    return this.legs < 0.5 ? Math.min(hs, 1.3) : 0;
+  }
+
+  // --- per frame, after the pose is applied --------------------------------------------------
+  after(dt) {
+    const M = this.kind ? MOVES[this.kind] : null;
+    const cutting = !!(M && M.hit && this.t >= M.hit[0] && this.t <= M.hit[1] + 0.04);
+    this.rig.trail.update(dt, this.rig, this.rig.drawn && (cutting || (M && M.hit && this.t > M.hit[0] - 0.08 && this.t < M.hit[1] + 0.1)));
+    if (M && M.hit && dt > 0 && !this.freeze) {
+      const s = clamp((this.t - M.hit[0]) / (M.hit[1] - M.hit[0]), 0, 1);
+      if (this.t >= M.hit[0] && this.t <= M.hit[1] + 1e-4) this.scan(this.kind, s);
+      this.prevS = s;
+    }
+    this.updateDebug();
+  }
+
+  // ---------------------------------------------------------------- hit scan
+  frame() {
+    const P = this.player, h = this.aim;
+    return { x: P.pos.x, y: P.pos.y, z: P.pos.z, fx: Math.sin(h), fz: Math.cos(h), lx: Math.cos(h), lz: -Math.sin(h) };
+  }
+  at(F, a, b) { return [F.x + F.fx * a + F.lx * b, F.z + F.fz * a + F.lz * b]; }
+
+  scan(kind, s) {
+    const F = this.frame(), G = this.game;
+    // sample every part of the swing since the last frame, so a slow frame doesn't skip anything
+    const steps = Math.max(1, Math.ceil(Math.abs(s - this.prevS) / 0.12));
+    for (let i = 1; i <= steps; i++) {
+      const si = lerp(this.prevS, s, i / steps);
+      if (kind === 'draw') this.scanCut(F, si);
+      else if (kind === 'overhead') this.scanOverhead(F, si);
+      else if (kind === 'thrust') this.scanThrust(F, si);
+    }
+  }
+
+  // cut: a fan that sweeps from his left, round the front, to his right
+  cutAngle(s) { return lerp(HIT.cut.half, -HIT.cut.half, s * s * (3 - 2 * s)); }
+  scanCut(F, s) {
+    const phi = this.cutAngle(s), cs = Math.cos(phi), sn = Math.sin(phi);
+    // the blade moves toward decreasing phi: tangent = f sin(phi) - l cos(phi)
+    const tx = F.fx * sn - F.lx * cs, tz = F.fz * sn - F.lz * cs;
+    for (const r of [0.55, 0.95, 1.35]) {
+      const [x, z] = this.at(F, r * cs, r * sn);
+      this.strike(x, z, 0.4, tx, tz, 1, 'cut');
+    }
+    this.hitObjects('draw', F, (c, dx, dz, dist) => {
+      if (dist > HIT.cut.reach + c.r) return false;
+      const a = dx * F.fx + dz * F.fz, b = dx * F.lx + dz * F.lz;
+      return Math.abs(Math.atan2(b, a) - phi) <= HIT.cut.wedge + Math.asin(Math.min(1, c.r / Math.max(dist, 0.01)));
+    });
+  }
+
+  // overhead: lands on the ground straight ahead
+  scanOverhead(F, s) {
+    if (s < 0.55) return;
+    if (!this.landed) {
+      this.landed = true;
+      const [x, z] = this.at(F, 1.2, 0);
+      this.impact(F, x, z);
+    }
+    this.hitObjects('overhead', F, (c, dx, dz) => {
+      const a = dx * F.fx + dz * F.fz, b = dx * F.lx + dz * F.lz;
+      return a >= HIT.overhead.from - c.r && a <= HIT.overhead.to + c.r && Math.abs(b) <= HIT.overhead.half + c.r;
+    });
+  }
+
+  // thrust: a thin lane that gets longer as the point goes out
+  scanThrust(F, s) {
+    const e = s * s * (3 - 2 * s), reach = lerp(0.45, HIT.thrust.to, e);
+    for (let a = HIT.thrust.from + 0.1; a <= reach; a += 0.3) {
+      const [x, z] = this.at(F, a, 0);
+      this.strike(x, z, 0.2, F.fx, F.fz, 1.2, 'thrust');
+    }
+    const [tx, tz] = this.at(F, reach, 0);
+    this.tip(tx, tz, F);
+    this.hitObjects('thrust', F, (c, dx, dz) => {
+      const a = dx * F.fx + dz * F.fz, b = dx * F.lx + dz * F.lz;
+      return a >= HIT.thrust.from - c.r && a <= reach + c.r && Math.abs(b) <= HIT.thrust.half + c.r;
+    });
+  }
+
+  // ---------------------------------------------------------------- effects
+  // the blade passes over a point on the ground heading (dx, dz)
+  strike(x, z, r, dx, dz, power, kind) {
+    const G = this.game, s = surfaceAt(x, z, this._s), y = groundY(x, z), pz = G.particles;
+    G.trample.stamp(x, z, r, clamp(0.55 + power * 0.4, 0, 1), dx, dz, 1);
+    if (s.leaves > 0.15) G.leaves.kick(x, z, r + 0.3, 0.8 + power, dx * (kind === 'thrust' ? 9 : 6), dz * (kind === 'thrust' ? 9 : 6));
+    if (Math.random() < 0.7) {
+      if (s.wheat > 0.35) pz.emit('seed', x, y + 0.55, z, dx * 3, 1.5, dz * 3, 1.2, kind === 'cut' ? 4 : 2);
+      else if (s.snow > 0.4) pz.emit('powder', x, y + G.snow.depthAt(x, z), z, dx * 2, 1.0, dz * 2, 1.0, 2);
+      else if (s.grass > 0.35 && s.path < 0.4) pz.emit('grass', x, y + 0.25, z, dx * 3, 2.0, dz * 3, 1.3, kind === 'cut' ? 4 : 2);
+      else if (s.path > 0.4) pz.emit('dust', x, y + 0.05, z, dx * 1.5, 0.6, dz * 1.5, 0.6, 1);
+    }
+  }
+
+  // the overhead cut lands: a crater and a burst
+  impact(F, x, z) {
+    const G = this.game, s = surfaceAt(x, z, this._s), y = groundY(x, z), pz = G.particles;
+    const p = new THREE.Vector3(x, y, z);
+    for (let a = 0.35; a <= 1.7; a += 0.3) {
+      const [px, pzz] = this.at(F, a, 0);
+      G.trample.stamp(px, pzz, 0.55, 1, F.fx, F.fz, 1);
+    }
+    G.trample.stamp(x, z, 0.9, 1, F.fx * 0.4, F.fz * 0.4, 1);
+    G.snow.onImpact(p, this.aim, 'land');
+    G.snow.stamp(x, z, 0.5, 0.45, this.aim, 1, 1);
+    G.leaves.onImpact(p, 'roll', 8);
+    if (s.leaves > 0.15) G.leaves.kick(x, z, 1.3, 1.6, F.fx * 5, F.fz * 5);
+    if (s.wheat > 0.35) pz.emit('seed', x, y + 0.5, z, F.fx * 2, 2.2, F.fz * 2, 1.6, 22);
+    else if (s.snow > 0.4) pz.emit('snow', x, y + G.snow.depthAt(x, z), z, F.fx * 1.5, 2.6, F.fz * 1.5, 2.0, 40);
+    else if (s.grass > 0.3 && s.path < 0.4) pz.emit('grass', x, y + 0.2, z, F.fx * 2, 3.0, F.fz * 2, 2.0, 14);
+    pz.emit('dust', x, y + 0.05, z, F.fx * 1.2, 1.0, F.fz * 1.2, 1.4, 12);
+    G.audio?.sword('slam');
+    G.rig.shake = Math.max(G.rig.shake, 0.32);
+  }
+
+  // the point of the thrust
+  tip(x, z, F) {
+    const G = this.game, y = groundY(x, z), pz = G.particles, s = surfaceAt(x, z, this._s);
+    if (Math.random() < 0.8) {
+      if (s.snow > 0.4) pz.emit('powder', x, y + G.snow.depthAt(x, z), z, F.fx * 3, 1.2, F.fz * 3, 1.2, 3);
+      else pz.emit('dust', x, y + 0.1, z, F.fx * 3, 0.7, F.fz * 3, 0.8, 2);
+    }
+  }
+
+  // trees, rocks, posts the volume touches (once per swing each)
+  hitObjects(kind, F, test) {
+    const G = this.game, list = [G.trees?.colliders, G.props?.colliders];
+    for (const L of list) {
+      if (!L) continue;
+      for (const c of L) {
+        const dx = c.x - F.x, dz = c.z - F.z, d2 = dx * dx + dz * dz;
+        if (d2 > 3.6 * 3.6) continue;
+        if (this.struck.has(c)) continue;
+        const dist = Math.sqrt(d2);
+        if (!test(c, dx, dz, dist)) continue;
+        this.struck.add(c);
+        const k = Math.max(0.01, dist - c.r), px = F.x + dx / dist * k, pz = F.z + dz / dist * k, y = groundY(px, pz) + 0.9;
+        G.particles.emit('dust', px, y, pz, -dx / dist, 0.9, -dz / dist, 1.2, 9);
+        G.particles.emit('seed', px, y, pz, -dx / dist, 1.0, -dz / dist, 1.2, 5);
+        G.audio?.sword('hit');
+        G.rig.shake = Math.max(G.rig.shake, 0.12);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- H: the three hitboxes
+  buildDebug() {
+    const g = new THREE.Group(); g.renderOrder = 999;
+    const mk = (pts, color) => {
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      const m = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.5, depthTest: false }));
+      m.renderOrder = 999; m.frustumCulled = false; m.userData.base = color; return m;
+    };
+    const box = (a0, a1, b0, b1, y0, y1) => {                    // forward a, left b
+      const c = [[b0, y0, a0], [b1, y0, a0], [b1, y0, a1], [b0, y0, a1], [b0, y1, a0], [b1, y1, a0], [b1, y1, a1], [b0, y1, a1]].map(p => new THREE.Vector3(...p));
+      const e = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+      return e.flatMap(([i, j]) => [c[i], c[j]]);
+    };
+    const fan = [], R = HIT.cut.reach, H = HIT.cut.half, N = 24;
+    for (const y of [0.15, 1.1]) for (let i = 0; i < N; i++) {
+      const a0 = lerp(-H, H, i / N), a1 = lerp(-H, H, (i + 1) / N);
+      fan.push(new THREE.Vector3(Math.sin(a0) * R, y, Math.cos(a0) * R), new THREE.Vector3(Math.sin(a1) * R, y, Math.cos(a1) * R));
+    }
+    for (const y of [0.15, 1.1]) for (const a of [-H, H]) fan.push(new THREE.Vector3(0, y, 0), new THREE.Vector3(Math.sin(a) * R, y, Math.cos(a) * R));
+    fan.push(new THREE.Vector3(Math.sin(-H) * R, 0.15, Math.cos(-H) * R), new THREE.Vector3(Math.sin(-H) * R, 1.1, Math.cos(-H) * R), new THREE.Vector3(Math.sin(H) * R, 0.15, Math.cos(H) * R), new THREE.Vector3(Math.sin(H) * R, 1.1, Math.cos(H) * R));
+    g.add(this.dCut = mk(fan, 0x7fe0ff));
+    g.add(this.dOver = mk(box(HIT.overhead.from, HIT.overhead.to, -HIT.overhead.half, HIT.overhead.half, 0, 2.0), 0xff8de1));
+    g.add(this.dThrust = mk(box(HIT.thrust.from, HIT.thrust.to, -HIT.thrust.half, HIT.thrust.half, 0.35, 1.0), 0xffe27f));
+    this.game.scene.add(g);
+    return g;
+  }
+  updateDebug() {
+    const on = !!(this.game.contact && this.game.contact.showing);
+    if (!on) { if (this.debug) this.debug.visible = false; return; }
+    if (!this.debug) this.debug = this.buildDebug();
+    const P = this.player;
+    this.debug.visible = true;
+    this.debug.position.copy(P.pos); this.debug.rotation.y = this.kind && this.faceLock ? this.aim : P.heading;
+    const act = this.kind === 'draw' ? this.dCut : this.kind === 'overhead' ? this.dOver : this.kind === 'thrust' ? this.dThrust : null;
+    const M = this.kind ? MOVES[this.kind] : null;
+    const live = !!(M && M.hit && this.t >= M.hit[0] && this.t <= M.hit[1] + 0.05);
+    for (const d of [this.dCut, this.dOver, this.dThrust]) {
+      d.material.color.setHex(d === act && live ? 0xff7a2a : d.userData.base);
+      d.material.opacity = d === act ? (live ? 1 : 0.8) : 0.3;
+    }
+  }
+}

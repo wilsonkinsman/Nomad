@@ -1,0 +1,69 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<!-- generated from index.html by stripping the document wrapper; the artifact host adds its own -->
+<title>Nomad</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Shippori+Mincho:wght@500&family=Inter:wght@400;500&display=swap">
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">{ "imports": { "three": "./lib/three.module.min.js" } }</script>
+
+<canvas id="c"></canvas>
+
+<div id="loading">
+  <div class="load-title">NOMAD</div>
+  <div class="load-bar"><i id="load-fill"></i></div>
+  <div class="load-text" id="load-text">Gathering the morning…</div>
+</div>
+
+<div id="menu" hidden>
+  <div class="menu-card">
+    <div class="menu-kicker">a wanderer's plain</div>
+    <h1 class="menu-title">NOMAD</h1>
+    <div class="menu-jp"><ruby>旅人<rt>たびびと</rt></ruby></div>
+    <div class="menu-buttons">
+      <button id="btn-start" class="mbtn primary">Wander</button>
+      <div class="menu-row">
+        <span>Night mode</span>
+        <button id="btn-night" class="toggle" aria-pressed="false"><i></i></button>
+      </div>
+      <div class="menu-row">
+        <span>Wanderer</span>
+        <div class="seg" id="seg-character">
+          <button data-c="ronin">Ronin</button><button data-c="atsu">Atsu</button><button data-c="nomad">Nomad</button>
+        </div>
+      </div>
+      <p class="char-note" id="char-note" hidden></p>
+      <div class="menu-row">
+        <span>Graphics</span>
+        <div class="seg" id="seg-quality">
+          <button data-q="low">Low</button><button data-q="medium">Medium</button><button data-q="high">High</button>
+        </div>
+      </div>
+      <div class="menu-row">
+        <span>Sound</span>
+        <input id="vol" type="range" min="0" max="1" step="0.05" value="0.7">
+      </div>
+    </div>
+    <div class="menu-controls">
+      <div><b>WASD</b> move</div><div><b>Shift</b> sprint</div><div><b>Space</b> jump</div>
+      <div><b>C</b> / <b>Right-click</b> dive</div><div><b>X</b> walk / jog</div><div><b>Mouse</b> look · wheel zoom</div>
+      <div><b>Click</b> / <b>F</b> sword (draw, cut, chop, thrust)</div>
+      <div><b>Esc</b> menu</div><div><b>H</b> show hitboxes</div>
+      <div><b>Gamepad</b> supported</div>
+    </div>
+    <p class="menu-credits">The ronin: the "Ribbit Ronin" frog sculpt, painted and rigged for Nomad. Atsu built on MakeHuman / MPFB (CC0) with community garments, modified: "F Kimono" by Mindfront (CC0),
+      "F Ninja" by Mindfront and "Gi One" by brkurt (CC BY).</p>
+  </div>
+</div>
+
+<div id="hud" hidden>
+  <div id="compass"><div id="compass-strip"></div><div class="compass-notch"></div></div>
+  <div id="zone-title"><div class="zt-en"></div><div class="zt-jp"></div></div>
+  <svg id="stamina" viewBox="0 0 40 40"><circle class="st-bg" cx="20" cy="20" r="16"/><circle class="st-fg" id="st-fg" cx="20" cy="20" r="16"/></svg>
+  <div id="hint"></div>
+</div>
+<div id="click-to-look" hidden>Click to look around</div>
+
+<script type="module" src="js/main.js"></script>
+
+</body></html>

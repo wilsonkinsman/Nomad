@@ -1,0 +1,166 @@
+// Foley only (no music): footsteps shaped from filtered noise grains per surface, landings,
+// the whoosh of a dive, wind that swells with the gusts, and crickets at night.
+export class Audio {
+  constructor() { this.ctx = null; this.volume = 0.7; }
+
+  resume() {
+    if (this.ctx) { this.ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const ctx = this.ctx = new AC();
+    this.master = ctx.createGain(); this.master.gain.value = this.volume; this.master.connect(ctx.destination);
+    // footsteps sit well under everything else: a soft, low-passed bus
+    this.stepTone = ctx.createBiquadFilter(); this.stepTone.type = 'lowpass'; this.stepTone.frequency.value = 2600;
+    this.stepBus = ctx.createGain(); this.stepBus.gain.value = 0.18;
+    this.stepTone.connect(this.stepBus).connect(this.master);
+    // the sword's foley sits low too
+    this.swordBus = ctx.createGain(); this.swordBus.gain.value = 0.5; this.swordBus.connect(this.master);
+    const len = ctx.sampleRate * 2, buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.noise = buf;
+    // wind bed: two bands of looping noise
+    const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+    this.windLP = ctx.createBiquadFilter(); this.windLP.type = 'lowpass'; this.windLP.frequency.value = 420; this.windLP.Q.value = 0.6;
+    this.windGain = ctx.createGain(); this.windGain.gain.value = 0.0;
+    src.connect(this.windLP).connect(this.windGain).connect(this.master);
+    const src2 = ctx.createBufferSource(); src2.buffer = buf; src2.loop = true; src2.playbackRate.value = 0.7;
+    this.whistle = ctx.createBiquadFilter(); this.whistle.type = 'bandpass'; this.whistle.frequency.value = 900; this.whistle.Q.value = 6;
+    this.whistleGain = ctx.createGain(); this.whistleGain.gain.value = 0;
+    src2.connect(this.whistle).connect(this.whistleGain).connect(this.master);
+    src.start(); src2.start();
+    this.cricketT = 0;
+  }
+
+  setVolume(v) { this.volume = v; if (this.master) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05); }
+
+  // one short band-passed noise grain
+  grain(t, freq, q, dur, gain, type = 'bandpass') {
+    const ctx = this.ctx, s = ctx.createBufferSource(); s.buffer = this.noise;
+    const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + Math.min(0.004, dur * 0.2)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f).connect(g).connect(this.bus || this.master);
+    s.start(t, Math.random() * 1.5); s.stop(t + dur + 0.02);
+  }
+  thump(t, freq, dur, gain) {
+    const ctx = this.ctx, o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.setValueAtTime(freq, t); o.frequency.exponentialRampToValueAtTime(freq * 0.5, t + dur);
+    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(this.bus || this.master); o.start(t); o.stop(t + dur + 0.02);
+  }
+
+  step(s, speed, sprint) {
+    if (!this.ctx) return;
+    this.bus = this.stepTone;
+    try { this.stepSounds(s, speed, sprint); } finally { this.bus = null; }
+  }
+
+  stepSounds(s, speed, sprint) {
+    const t = this.ctx.currentTime + 0.005, k = Math.min(1.3, 0.45 + speed * 0.13), R = Math.random;
+    switch (s.kind) {
+      case 'snow':
+        for (let i = 0; i < 9; i++) this.grain(t + R() * 0.16, 700 + R() * 1500, 1.4, 0.03 + R() * 0.03, 0.22 * k);
+        this.grain(t, 300, 0.7, 0.14, 0.18 * k, 'lowpass');
+        break;
+      case 'leaves':
+        for (let i = 0; i < 16; i++) this.grain(t + R() * 0.14, 2200 + R() * 4000, 2.5, 0.006 + R() * 0.01, 0.3 * k);
+        this.grain(t, 1600, 0.6, 0.12, 0.06 * k);
+        break;
+      case 'wheat':
+        this.grain(t, 4200, 0.7, 0.28, 0.12 * k); this.grain(t + 0.05, 2600, 0.8, 0.22, 0.07 * k);
+        break;
+      case 'puddle':
+        this.grain(t, 1300, 0.9, 0.16, 0.3 * k); this.thump(t, 420, 0.09, 0.12 * k);
+        for (let i = 0; i < 5; i++) this.grain(t + 0.03 + R() * 0.12, 2500 + R() * 2500, 4, 0.02, 0.08 * k);
+        break;
+      case 'dirt':
+        this.thump(t, 110, 0.07, 0.25 * k);
+        for (let i = 0; i < 4; i++) this.grain(t + R() * 0.05, 1800 + R() * 1800, 2, 0.015, 0.12 * k);
+        break;
+      default:
+        this.thump(t, 95, 0.06, 0.18 * k);
+        this.grain(t, 3200, 0.8, 0.1, 0.1 * k);
+    }
+  }
+
+  // a band of noise whose pitch rises then falls: swishes, steel sliding on steel
+  sweep(t, f0, f1, f2, q, dur, gain) {
+    const ctx = this.ctx, s = ctx.createBufferSource(); s.buffer = this.noise;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = q;
+    f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur * 0.5); f.frequency.exponentialRampToValueAtTime(f2, t + dur);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + dur * 0.3); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f).connect(g).connect(this.bus || this.master);
+    s.start(t, Math.random() * 1.5); s.stop(t + dur + 0.02);
+  }
+  ping(t, freq, dur, gain) {
+    const ctx = this.ctx, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(this.bus || this.master); o.start(t); o.stop(t + dur + 0.02);
+  }
+  sword(kind) {
+    if (!this.ctx) return;
+    this.bus = this.swordBus;
+    try {
+      const t = this.ctx.currentTime + 0.005, R = Math.random;
+      switch (kind) {
+        case 'draw':                                     // steel sliding out of the sheath
+          this.sweep(t, 2600, 6200, 4200, 5, 0.3, 0.16); this.sweep(t + 0.02, 1500, 3200, 2400, 3, 0.26, 0.1);
+          this.ping(t + 0.24, 2350 + R() * 120, 0.5, 0.05); break;
+        case 'sheathe':
+          this.sweep(t, 4200, 2200, 1500, 4, 0.26, 0.1); this.thump(t + 0.27, 260, 0.05, 0.12); this.grain(t + 0.27, 3400, 1.5, 0.04, 0.08); break;
+        case 'cut': this.sweep(t, 600, 2300, 700, 1.0, 0.24, 0.22); break;
+        case 'overhead': this.sweep(t, 500, 1800, 420, 0.9, 0.26, 0.24); break;
+        case 'thrust': this.sweep(t, 1200, 3600, 2400, 1.4, 0.16, 0.2); break;
+        case 'slam': this.thump(t, 85, 0.2, 0.32); this.grain(t, 500, 0.6, 0.22, 0.2, 'lowpass'); break;
+        case 'hit': this.thump(t, 150, 0.09, 0.3); this.grain(t, 1800, 1.0, 0.07, 0.16); break;
+      }
+    } finally { this.bus = null; }
+  }
+
+  impact(s, kind, v) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime, k = Math.min(1.5, 0.4 + v * 0.1);
+    this.thump(t, 80, 0.16, 0.45 * k);
+    if (kind !== 'land') this.grain(t, 700, 0.6, 0.35, 0.2 * k, 'lowpass');
+    this.step(s, 5, true);
+    if (s.kind === 'snow') for (let i = 0; i < 14; i++) this.grain(t + Math.random() * 0.3, 600 + Math.random() * 1400, 1.2, 0.05, 0.2 * k);
+    if (s.kind === 'leaves') for (let i = 0; i < 30; i++) this.grain(t + Math.random() * 0.35, 2500 + Math.random() * 4000, 2.5, 0.008, 0.25 * k);
+  }
+
+  whoosh() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = this.noise;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2;
+    f.frequency.setValueAtTime(400, t); f.frequency.exponentialRampToValueAtTime(1800, t + 0.25); f.frequency.exponentialRampToValueAtTime(500, t + 0.5);
+    const g = ctx.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.25, t + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+    s.connect(f).connect(g).connect(this.master); s.start(t); s.stop(t + 0.6);
+  }
+
+  update(dt, game) {
+    if (!this.ctx) return;
+    const P = game.player, g = game.wind.gust(P.pos.x, P.pos.z), sp = Math.hypot(P.vel.x, P.vel.z);
+    const t = this.ctx.currentTime;
+    const menu = game.state !== 'play';
+    const lvl = (0.05 + g * 0.05 + sp * 0.012) * (menu ? 0.6 : 1);
+    this.windGain.gain.setTargetAtTime(lvl, t, 0.3);
+    this.windLP.frequency.setTargetAtTime(300 + g * 160 + sp * 60, t, 0.3);
+    this.whistleGain.gain.setTargetAtTime(Math.max(0, g - 1.8) * 0.02, t, 0.5);
+    this.whistle.frequency.setTargetAtTime(700 + g * 180, t, 0.5);
+    // crickets on moonlit nights, only away from the snow
+    if (game.sky.night && P.surface && P.surface.snow < 0.3) {
+      this.cricketT -= dt;
+      if (this.cricketT <= 0) {
+        this.cricketT = 0.5 + Math.random() * 0.9;
+        const base = t + 0.02, f = 4200 + Math.random() * 400, pan = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : null;
+        if (pan) { pan.pan.value = Math.random() * 1.6 - 0.8; pan.connect(this.master); }
+        for (let i = 0; i < 3; i++) {
+          const o = this.ctx.createOscillator(), gg = this.ctx.createGain();
+          o.frequency.value = f; gg.gain.setValueAtTime(0, base + i * 0.06); gg.gain.linearRampToValueAtTime(0.018, base + i * 0.06 + 0.008); gg.gain.linearRampToValueAtTime(0, base + i * 0.06 + 0.035);
+          o.connect(gg).connect(pan || this.master); o.start(base + i * 0.06); o.stop(base + i * 0.06 + 0.05);
+        }
+      }
+    }
+  }
+}
