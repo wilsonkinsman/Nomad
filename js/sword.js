@@ -383,7 +383,7 @@ export class Weapon {
     const P = this.player, G = this.game, input = G.input;
     if (this.freeze) { P.vel.set(0, 0, 0); this.moveScale = 0; this.faceLock = true; return; }
     if (inMenu) { if (this.kind) this.reset(); return; }
-    if (P.state === 'dive' || P.state === 'roll' || P.state === 'flop' || P.state === 'getup' || P.state === 'flash' || P.state === 'tackle') { if (this.kind) this.reset(); this.w = 0; return; }
+    if (P.state === 'dive' || P.state === 'roll' || P.state === 'flop' || P.state === 'getup' || P.state === 'flash' || P.state === 'tackle' || P.state === 'rockkick') { if (this.kind) this.reset(); this.w = 0; return; }
     if (G.bow?.equipped) { if (this.kind) this.reset(); this.w = 0; return; }
     this.parryCool = Math.max(0, this.parryCool - dt);
     if (input.attack()) this.press();

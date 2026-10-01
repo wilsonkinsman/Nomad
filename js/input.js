@@ -49,7 +49,7 @@ export class Input {
     const b = (i) => !!(g.buttons[i] && g.buttons[i].pressed);
     const edge = (i, name) => { if (b(i) && !this._padPrev[i]) this.pressed.add(name); };
     edge(0, 'Space'); edge(1, 'Dive'); edge(2, 'Dive'); if ((b(1) && !this._padPrev[1]) || (b(2) && !this._padPrev[2])) this.tapDive();
-     edge(3, 'Attack'); edge(4, 'Parry'); edge(8, 'KeyB'); edge(6, 'Storm'); edge(11, 'Tackle'); edge(12, 'Earth'); edge(13, 'Wall'); edge(9, 'Escape');
+     edge(3, 'Attack'); edge(4, 'Parry'); edge(8, 'KeyB'); edge(6, 'Storm'); edge(11, 'Tackle'); edge(12, 'Earth'); edge(13, 'Wall'); edge(14, 'Kick'); edge(9, 'Escape');
     if (b(10) && !this._padPrev[10]) P.sprintLatch = !P.sprintLatch;
     P.sprint = b(5) || b(7) || (P.sprintLatch && Math.hypot(P.x, P.y) > 0.5);
     if (Math.hypot(P.x, P.y) < 0.2) P.sprintLatch = false;
@@ -80,6 +80,7 @@ export class Input {
   parry() { return this.pressed.has('KeyF') || this.pressed.has('Parry'); }
   stormKey() { return this.pressed.has('KeyR') || this.pressed.has('Storm'); }
   earthKey() { return this.pressed.has('KeyG') || this.pressed.has('Earth'); }
+  kickKey() { return this.pressed.has('KeyE') || this.pressed.has('Kick'); }
   wallKey() { return this.pressed.has('KeyQ') || this.pressed.has('Wall'); }
   tackleKey() { return this.pressed.has('KeyT') || this.pressed.has('Tackle'); }
   bowKey() { return this.pressed.has('KeyB'); }

@@ -7,8 +7,27 @@ import { BONES, LEG } from './nomad.js';
 import { clamp, lerp, smoothstep, damp } from './util.js';
 import { evalMove } from './swordmoves.js';
 import { DOWN, RUN, UP, TOTAL } from './tackle.js';
+import { KICK_TIME } from './earth.js';
 
 const TAU = Math.PI * 2;
+
+// Rock Kick, keyed: [seconds, { bone: [x, y, z], hipsY }]. The right leg stomps, then kicks.
+const RK_STAND = { thigh_R: [0], shin_R: [0.05], foot_R: [0], thigh_L: [0], shin_L: [0.05], foot_L: [0], spine: [0.05], chest: [0.03], neck: [-0.05], head: [0],
+  upperarm_L: [-0.1, 0, 0.15], upperarm_R: [-0.1, 0, -0.15], forearm_L: [-0.3], forearm_R: [-0.3], hipsY: 0 };
+const ROCKKICK = [
+  [0.0, RK_STAND],
+  [0.18, { thigh_R: [-1.3], shin_R: [1.55], foot_R: [0.25], thigh_L: [-0.08], shin_L: [0.15], foot_L: [-0.07], spine: [-0.05], chest: [-0.05], neck: [0.05], head: [0],
+    upperarm_L: [-0.3, 0, 0.9], upperarm_R: [-0.3, 0, -0.9], forearm_L: [-0.5], forearm_R: [-0.5], hipsY: 0.02 }],
+  [0.28, { thigh_R: [-0.4], shin_R: [0.65], foot_R: [-0.2], thigh_L: [-0.38], shin_L: [0.7], foot_L: [-0.3], spine: [0.28], chest: [0.18], neck: [-0.2], head: [-0.1],
+    upperarm_L: [0.25, 0, 0.55], upperarm_R: [0.25, 0, -0.55], forearm_L: [-0.6], forearm_R: [-0.6], hipsY: -0.09 }],
+  [0.47, { thigh_R: [0.6], shin_R: [1.4], foot_R: [0.35], thigh_L: [-0.22], shin_L: [0.4], foot_L: [-0.18], spine: [-0.1], chest: [-0.06], neck: [0.05], head: [0.05],
+    upperarm_L: [-0.9, 0, 0.45], upperarm_R: [0.6, 0, -0.5], forearm_L: [-0.7], forearm_R: [-0.4], hipsY: -0.05 }],
+  [0.6, { thigh_R: [-1.55], shin_R: [0.12], foot_R: [0.45], thigh_L: [0.08], shin_L: [0.22], foot_L: [-0.3], spine: [-0.28], chest: [-0.12], neck: [0.2], head: [0.1],
+    upperarm_L: [0.55, 0, 0.6], upperarm_R: [-0.7, 0, -0.6], forearm_L: [-0.4], forearm_R: [-0.6], hipsY: 0 }],
+  [0.72, { thigh_R: [-1.3], shin_R: [0.3], foot_R: [0.3], thigh_L: [0.05], shin_L: [0.2], foot_L: [-0.25], spine: [-0.2], chest: [-0.08], neck: [0.15], head: [0.05],
+    upperarm_L: [0.4, 0, 0.5], upperarm_R: [-0.5, 0, -0.5], forearm_L: [-0.4], forearm_R: [-0.5], hipsY: 0 }],
+  [0.98, RK_STAND],
+];
 
 export class Animator {
   constructor() {
@@ -356,6 +375,18 @@ export class Animator {
         set('foot_' + side, -0.3 * dn + 0.5 * rn);
       }
       O.hipsY = -0.02 * dn;
+    } else if (P.state === 'rockkick') {
+      // Rock Kick: knee up, stomp, draw the leg back as the boulder comes up, kick it away, follow through
+      target = 1 - smoothstep(KICK_TIME - 0.2, KICK_TIME, t);
+      O.pitch = 0; O.pivotY = 0.95;
+      const K = ROCKKICK;
+      let i = 0; while (i < K.length - 2 && t > K[i + 1][0]) i++;
+      const [t0, a] = K[i], [t1, c] = K[i + 1], u = smoothstep(0, 1, clamp((t - t0) / (t1 - t0), 0, 1));
+      for (const k in a) {
+        if (k === 'hipsY') { O.hipsY = lerp(a[k], c[k], u); continue; }
+        const v = a[k], w = c[k] || v;
+        set(k, lerp(v[0], w[0], u), lerp(v[1] || 0, w[1] || 0, u), lerp(v[2] || 0, w[2] || 0, u));
+      }
     } else if (P.state === 'getup') {
       const u = clamp(t / P.getupTime, 0, 1), e = u * u * (3 - 2 * u);
       target = 1 - smoothstep(0.8, 1, u);

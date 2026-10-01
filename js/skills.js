@@ -3,19 +3,22 @@
 // node it grows from, which may sit on another path. What you have learned
 // is kept in the browser (localStorage). Open it from the menu or with K.
 const SAVE = 'nomad_skills';
-const GRANTED = 6;       // skill points in all, so far
+const GRANTED = 7;       // skill points in all, so far
 
 // each path is `cols` grid columns wide; a skill's `col` is its place inside its path (0.5: centred over two)
 export const PATHS = {
   strength: { name: 'Strength', cols: 1 },
   lightning: { name: 'Lightning', cols: 2 },
-  earth: { name: 'Earth', cols: 1 },
+  earth: { name: 'Earth', cols: 2 },
 };
 
 const ICONS = {
   // a blade standing in cracked ground, stones in the air round it
   earth: '<svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M24 4v26M19 10h10"/><path d="M6 36h36M24 36l-5 7M24 36l6 6M14 36l-4 5M34 36l5 4"/><path d="M9 20l4-3 3 3-3 3zM35 16l4-2 2 4-4 2z"/></g></svg>',
+  // a foot meeting a boulder, chips flying off it
+  rockkick: '<svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M6 10l7 14 4 12h8"/><path d="M30 20l7-3 6 4 1 7-5 5-7-1-4-6z"/><path d="M24 14l2 3M28 40l1-3M20 26h-3M47 14l-2 2M45 40l-2-2" opacity=".75"/></g></svg>',
   // a wall of piled stones
   wall: '<svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round">' +
     '<path d="M6 42V18l6-6 8 3 8-5 8 4 6 4v24z"/><path d="M6 30h36M15 30v12M27 30v12M21 18v12M33 18v12" stroke-linecap="round"/><path d="M2 44h44" stroke-linecap="round"/></g></svg>',
@@ -45,10 +48,12 @@ export const SKILLS = [
   { id: 'tackle', name: 'Electrical Tackle', path: 'lightning', cost: 1, requires: 'storm', row: 1, col: 1, icon: ICONS.tackle,
     desc: 'Press T while the storm is on your blade. He drops to all fours and a great cat of lightning forms around him, then the cat pounces: eight metres in a flash, straight at whatever is ahead, and rears up to rake it with both paws. The ground behind is burnt and whatever it catches is stunned.' },
   // earth
-  { id: 'earth', name: 'Earth Power', path: 'earth', cost: 1, requires: null, row: 0, icon: ICONS.earth,
+  { id: 'earth', name: 'Earth Power', path: 'earth', cost: 1, requires: null, row: 0, col: 0.5, icon: ICONS.earth,
     desc: 'Press G. Drive the blade into the ground and the earth answers: stones rise and circle you. For forty seconds you take half damage, your blows throw things back, and Sky Slam raises a ring of stone. Ten seconds to recover after it fades.' },
-  { id: 'wall', name: 'Earth Wall', path: 'earth', cost: 1, requires: 'earth', row: 1, icon: ICONS.wall,
+  { id: 'wall', name: 'Earth Wall', path: 'earth', cost: 1, requires: 'earth', row: 1, col: 0, icon: ICONS.wall,
     desc: 'Press Q while Earth Power is on you. A wall of rock tears up out of the ground in front of you: arrows shatter on it, nothing walks through it, and a dash into it ends with whoever dashed stunned on the ground.' },
+  { id: 'rockkick', name: 'Rock Kick', path: 'earth', cost: 1, requires: 'earth', row: 1, col: 1, icon: ICONS.rockkick,
+    desc: 'Press E while Earth Power is on you. Stomp, and a boulder bursts up out of the ground in a spray of stones; kick it and it flies low and hard, shattering on whatever it hits and throwing it back.' },
 ];
 
 export class Skills {
@@ -96,7 +101,7 @@ export class Skills {
     const paths = Object.entries(PATHS);
     // two grid tracks per column, so a node can sit centred over two columns
     let at = 0; for (const [, p] of paths) { p.at = at; at += p.cols; }
-    this.tree.style.gridTemplateColumns = `repeat(${at * 2}, minmax(0, 110px))`;
+    this.tree.style.gridTemplateColumns = `repeat(${at * 2}, minmax(0, 96px))`;
     this.tree.textContent = '';
     // a heading for each path, then its skills (row 0 is the heading)
     for (const [id, p] of paths) {

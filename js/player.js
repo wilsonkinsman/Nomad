@@ -107,7 +107,7 @@ export class Player {
 
     // ---------------------------------------------------------------- intent
     let mx = 0, mz = 0, mag = 0;
-    const busy = this.state === 'dive' || this.state === 'roll' || this.state === 'flop' || this.state === 'getup' || this.state === 'flash' || this.state === 'tackle';
+    const busy = this.state === 'dive' || this.state === 'roll' || this.state === 'flop' || this.state === 'getup' || this.state === 'flash' || this.state === 'tackle' || this.state === 'rockkick';
     if (!inMenu && !busy) {
       const m = input.move(), b = g.rig.basis();
       mx = b.fx * m.y + b.rx * m.x; mz = b.fz * m.y + b.rz * m.x;
@@ -151,6 +151,8 @@ export class Player {
       this.vel.x = this.vel.z = 0;
     } else if (this.state === 'tackle') {
       g.tackle.drive(this, dt);
+    } else if (this.state === 'rockkick') {
+      g.earth.kickDrive(this, dt);
     }
     const sp = Math.hypot(this.vel.x, this.vel.z);
     // heading follows travel direction, slower at speed (momentum)
@@ -179,6 +181,8 @@ export class Player {
     if (!inMenu && this.state === 'ground' && input.tackleKey()) g.tackle?.trigger(this);
     // Earth Wall
     if (!inMenu && this.state === 'ground' && input.wallKey()) g.earth?.raiseWall(this);
+    // Rock Kick
+    if (!inMenu && this.state === 'ground' && input.kickKey()) g.earth?.rockKick(this);
     if (!inMenu && this.state === 'ground') {
       if (input.jump() && this.coyote > 0 && !(W && W.busy)) {
         this.vel.y = 4.5 - 1.2 * deep;
