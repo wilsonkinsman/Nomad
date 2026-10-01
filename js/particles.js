@@ -20,6 +20,8 @@ const KINDS = {
   // the Wind path: pale wisps of air that swell as they go, and the crow's dark feathers drifting down
   gust:  { col: [1.5, 1.62, 1.7], size: 0.16, grow: 1.4, drag: 1.8, grav: 0.2, life: 0.8, a: 0.26 },
   feather: { col: [0.06, 0.07, 0.1], size: 0.05, grow: 0.0, drag: 3.2, grav: -1.4, life: 2.6, a: 0.95 },
+  // a fairy's sparkles: pink-gold motes that drift up and wink out
+  fairy: { col: [3.2, 2.3, 2.8], size: 0.035, grow: 0.0, drag: 1.6, grav: 0.5, life: 1.0, a: 1 },
 };
 
 export class Particles {

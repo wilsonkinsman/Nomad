@@ -31,6 +31,9 @@ import { Tackle } from './tackle.js';
 import { Earth } from './earth.js';
 import { Gale } from './gale.js';
 import { CrowFlight } from './crowflight.js';
+import { Boss } from './boss.js';
+import { Fairies } from './fairies.js';
+import { Quests } from './quests.js';
 
 const QUALITY = {
   low:    { ratio: 0.6,  msaa: 0, shadow: 1024, veg: 0.5 },
@@ -134,8 +137,11 @@ async function boot() {
   game.earth = new Earth(game);
   game.gale = new Gale(game);
   game.crow = new CrowFlight(game);
+  game.boss = new Boss(game);              // the oni and his ring of stones (after the enemies: he joins their targets)
+  game.fairies = new Fairies(game);
+  game.quests = new Quests(game);
   game.systems.push(game.grass, game.wheat, game.snow, game.leaves, game.props, game.particles, game.fireflies, game.hud, game.audio);
-  game.systems.push(game.flash, game.enemies, game.bow, game.storm, game.tackle, game.earth, game.gale, game.crow);
+  game.systems.push(game.flash, game.enemies, game.bow, game.storm, game.tackle, game.earth, game.gale, game.crow, game.boss, game.fairies, game.quests);
   game.systems.unshift(game.contact);    // body hitboxes stamp before the snow and leaves update
   wireEvents();
   game.sky.setNight(settings.night);

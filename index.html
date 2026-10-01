@@ -66,6 +66,9 @@
   <div id="storm"><i id="storm-fill"></i></div>
   <div id="earth"><i id="earth-fill"></i></div>
   <div id="wind"><i id="wind-fill"></i></div>
+  <div id="boss" hidden><div class="boss-name">Akaoni <span>赤鬼 · the red oni</span></div><div class="boss-bar"><b id="boss-lag"></b><i id="boss-fill"></i></div></div>
+  <div id="quest" hidden><i>Quest</i><b id="quest-title"></b><span id="quest-goal"></span></div>
+  <div id="dialog" hidden><b id="dlg-name"></b><p id="dlg-text"></p></div>
 </div>
 <div id="click-to-look" hidden>Click to look around</div>
 <canvas id="flash-fx"></canvas>
@@ -77,9 +80,10 @@
 
 <div id="skills" hidden>
   <div class="sk-card" role="dialog" aria-label="Skills">
-    <div class="sk-head"><h2>Skills</h2><span id="sk-points"></span><button id="sk-close" class="sk-x" aria-label="Close">&times;</button></div>
+    <div class="sk-head"><h2>Skills</h2><span id="sk-points"></span><span id="sk-sources"></span>
+      <span class="sk-admin-row">Admin <button id="sk-admin" class="toggle" aria-pressed="false" aria-label="Admin mode: unlimited skill points"><i></i></button></span><button id="sk-close" class="sk-x" aria-label="Close">&times;</button></div>
     <div id="sk-tree"></div>
-    <div class="sk-foot"><button id="sk-reset" class="sk-link">Give the points back</button><span>K or Esc to close</span></div>
+    <div class="sk-foot"><button id="sk-reset" class="sk-link">Give the points back</button><button id="sk-wipe" class="sk-link" hidden>Reset all progress (fairies, quests, skills)</button><span>K or Esc to close</span></div>
   </div>
 </div>
 

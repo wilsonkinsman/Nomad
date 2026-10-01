@@ -1,9 +1,14 @@
 // The skill tree: a few nodes you can learn with skill points, grown along elemental paths (PATHS, one column
 // each). It is plain data (SKILLS), so adding a skill is adding an entry; `requires` draws a line from the
-// node it grows from, which may sit on another path. What you have learned
-// is kept in the browser (localStorage). Open it from the menu or with K.
+// node it grows from, which may sit on another path. Open it from the menu or with K.
+//
+// Skill points are earned: each fairy found on the plain (fairies.js) and each quest finished (quests.js) is
+// worth one, through award(key). A key is earned once ('fairy:3', 'quest:oni'), so the ledger is also the record
+// of which fairies are found and which quests are done. Skills learned before points had to be earned are kept,
+// paid for by `legacy`. Admin mode (a switch at the foot of the tree) gives unlimited points for testing, and can
+// wipe all progress. All of it is kept in the browser (localStorage).
 const SAVE = 'nomad_skills';
-const GRANTED = 10;      // skill points in all, so far
+const ADMIN_POINTS = 99;
 
 // each path is `cols` grid columns wide; a skill's `col` is its place inside its path (0.5: centred over two)
 export const PATHS = {
@@ -74,29 +79,67 @@ export const SKILLS = [
     desc: 'Hold Z while the wind is with you. A great crow of wind swoops past you; you catch its feet and it drags you off the ground and carries you wherever you look (W faster, S slower), the view widening with the speed. Let go and you hurl it where you look: it bursts in a blast of wind that throws back everything near. The flight burns the wind.' },
 ];
 
+const costOf = (id) => SKILLS.find((k) => k.id === id).cost;
+
 export class Skills {
   constructor() {
     this.learned = new Set();
+    this.earned = new Set();         // what has paid a point: 'fairy:<n>', 'quest:<id>'
+    this.legacy = 0;                 // points for skills learned before points had to be earned
+    this.admin = false;
+    this.totals = { fairy: 0, quest: 0 };      // how many there are to find, set by fairies.js and quests.js
+    this.listeners = [];
+    let old = false;
     try {
       const s = JSON.parse(localStorage.getItem(SAVE) || 'null');
       if (s && Array.isArray(s.learned)) for (const id of s.learned) if (SKILLS.some((k) => k.id === id)) this.learned.add(id);
+      if (s && Array.isArray(s.earned)) for (const k of s.earned) this.earned.add(String(k));
+      this.legacy = s && s.v >= 2 ? Math.max(0, s.legacy | 0) : 0;
+      old = !!(s && !(s.v >= 2));
+      this.admin = !!(s && s.admin);
     } catch { /* private mode: start fresh */ }
     // the tree has changed shape over time: a skill whose root is no longer learned is given back
     for (let again = true; again;) {
       again = false;
       for (const id of this.learned) { const sk = SKILLS.find((k) => k.id === id); if (sk.requires && !this.learned.has(sk.requires)) { this.learned.delete(id); again = true; } }
     }
+    // a save from before points were earned: what was learned then stays paid for
+    if (old) for (const id of this.learned) this.legacy += costOf(id);
+    this.save();
     this.root = document.getElementById('skills');
     this.tree = document.getElementById('sk-tree');
     this.info = document.getElementById('sk-points');
+    this.srcEl = document.getElementById('sk-sources');
+    this.adminEl = document.getElementById('sk-admin');
+    this.wipeEl = document.getElementById('sk-wipe');
     document.getElementById('sk-close').onclick = () => this.close();
     document.getElementById('sk-reset').onclick = () => this.reset();
+    this.adminEl.onclick = () => this.setAdmin(!this.admin);
+    this.wipeEl.onclick = () => this.wipe();
     this.root.addEventListener('mousedown', (e) => { if (e.target === this.root) this.close(); });
     this.render();
   }
 
-  // points left: what has been granted, less what the learned skills cost
-  get points() { let spent = 0; for (const id of this.learned) spent += SKILLS.find((k) => k.id === id).cost; return Math.max(0, GRANTED - spent); }
+  // points left: what has been earned, less what the learned skills cost
+  get spent() { let n = 0; for (const id of this.learned) n += costOf(id); return n; }
+  get points() { return this.admin ? ADMIN_POINTS : Math.max(0, this.legacy + this.earned.size - this.spent); }
+  // how many of a kind have been earned ('fairy', 'quest')
+  count(kind) { let n = 0; for (const k of this.earned) if (k.startsWith(kind + ':')) n++; return n; }
+  got(key) { return this.earned.has(key); }
+  // a point for `key`, once: true if it was new
+  award(key) {
+    if (this.earned.has(key)) return false;
+    this.earned.add(key); this.save(); this.render();
+    return true;
+  }
+  setAdmin(on) { this.admin = !!on; this.save(); this.render(); }
+  // admin: forget every fairy and quest and every skill, as if the game were new (the world is told, so the
+  // fairies come back and the oni returns)
+  wipe() {
+    this.learned.clear(); this.earned.clear(); this.legacy = 0; this.save(); this.render();
+    for (const fn of this.listeners) fn();
+  }
+  onWipe(fn) { this.listeners.push(fn); }
   has(id) { return this.learned.has(id); }
   get isOpen() { return !this.root.hidden; }
   can(sk) { return !this.has(sk.id) && this.points >= sk.cost && (!sk.requires || this.has(sk.requires)); }
@@ -108,14 +151,19 @@ export class Skills {
   }
   // give every point back
   reset() { this.learned.clear(); this.save(); this.render(); }
-  save() { try { localStorage.setItem(SAVE, JSON.stringify({ learned: [...this.learned] })); } catch { /* ignore */ } }
+  save() { try { localStorage.setItem(SAVE, JSON.stringify({ v: 2, learned: [...this.learned], earned: [...this.earned], legacy: this.legacy, admin: this.admin })); } catch { /* ignore */ } }
 
   open() { this.root.hidden = false; this.render(); }
   close() { this.root.hidden = true; }
   toggle() { this.isOpen ? this.close() : this.open(); }
 
   render() {
-    this.info.textContent = this.points + (this.points === 1 ? ' skill point' : ' skill points');
+    this.info.textContent = this.admin ? 'Unlimited skill points (admin)' : this.points + (this.points === 1 ? ' skill point' : ' skill points');
+    const T = this.totals;
+    this.srcEl.textContent = `Fairies found ${this.count('fairy')} of ${T.fairy}  ·  Quests done ${this.count('quest')} of ${T.quest}` +
+      (!this.admin && this.points === 0 && this.learned.size < SKILLS.length ? '  ·  find fairies across the plain, or finish quests, to earn more' : '');
+    this.adminEl.setAttribute('aria-pressed', this.admin ? 'true' : 'false');
+    this.wipeEl.hidden = !this.admin;
     const paths = Object.entries(PATHS);
     // two grid tracks per column, so a node can sit centred over two columns
     let at = 0; for (const [, p] of paths) { p.at = at; at += p.cols; }

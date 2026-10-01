@@ -33,6 +33,7 @@ export class Hud {
     this.callEl = document.getElementById('callout'); this.hpEl = document.getElementById('hp-fill'); this.hpBox = document.getElementById('hp');
     this.hurtEl = document.getElementById('hurt'); this.crossEl = document.getElementById('crosshair'); this.floatsEl = document.getElementById('floats');
     this.floats = []; this._v = null;
+    this.addMark = add;        // other systems put their own marks on the strip (a fairy, the monk, the oni); mark.off hides one
   }
 
   // a word in the middle of the screen (PARRY, HIT, DODGE...): cls is 'gold', 'red' or ''
@@ -93,7 +94,7 @@ export class Hud {
     // only what changed is written to the page: the compass otherwise touches thirty elements a frame
     for (const m of this.marks) {
       let rel = ((m.bearing - heading + 540) % 360) - 180;
-      const vis = Math.abs(rel) < 80;
+      const vis = !m.off && Math.abs(rel) < 80;
       if (vis !== m.vis) { m.vis = vis; m.el.style.display = vis ? '' : 'none'; }
       if (vis) { const left = Math.round((W / 2 + rel * ppd) * 2) / 2; if (left !== m.left) { m.left = left; m.el.style.left = left + 'px'; } }
     }

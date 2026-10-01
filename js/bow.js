@@ -276,7 +276,7 @@ export class Bow {
     G.audio?.bow('hit'); G.rig.shake = Math.max(G.rig.shake, 0.18);
     for (let i = 0; i < 6; i++) G.particles.emit('dust', a.pos.x, a.pos.y, a.pos.z, -a.vel.x * 0.04, 0.8, -a.vel.z * 0.04, 1.2, 1);
     // it stays in what it hit, and moves with it
-    const host = (c.dummy && c.dummy.tilt) || (c.enemy && c.enemy.group) || null;
+    const host = (c.dummy && c.dummy.tilt) || (c.enemy && c.enemy.group) || c.host || null;
     if (host) { host.add(a.mesh); a.mesh.position.copy(host.worldToLocal(a.pos.clone())); a.mesh.quaternion.copy(host.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(a.mesh.quaternion)); }
     this.stick(a, host);
   }

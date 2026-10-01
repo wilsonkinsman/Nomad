@@ -232,6 +232,58 @@ export class Audio {
     } finally { this.bus = null; }
   }
 
+  // a fairy: a soft twinkle when you come near (k: how near), a rising shimmer of bells when she is found
+  fairy(kind, k = 1) {
+    if (!this.ctx) return;
+    this.bus = this.swordBus;
+    try {
+      const t = this.ctx.currentTime + 0.005, notes = [1568, 1760, 2093, 2349, 2637, 3136];
+      if (kind === 'near') for (let i = 0; i < 3; i++) this.ping(t + i * 0.09 + Math.random() * 0.03, notes[(Math.random() * notes.length) | 0], 0.6, 0.025 + 0.05 * k);
+      else {
+        [1047, 1319, 1568, 2093, 2637, 3136].forEach((f, i) => this.ping(t + i * 0.07, f, 1.1, 0.09));
+        this.sweep(t, 2000, 7000, 9000, 2, 0.8, 0.08);
+      }
+    } finally { this.bus = null; }
+  }
+  // a growl: a low sawtooth, rasped and filtered, with a breath of noise over it
+  growl(t, f0, f1, dur, gain) {
+    const ctx = this.ctx, o = ctx.createOscillator(), lfo = ctx.createOscillator(), lg = ctx.createGain(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(f0, t); o.frequency.linearRampToValueAtTime(f1, t + dur);
+    lfo.frequency.value = 31; lg.gain.value = f0 * 0.18; lfo.connect(lg).connect(o.frequency);
+    f.type = 'lowpass'; f.frequency.setValueAtTime(700, t); f.frequency.linearRampToValueAtTime(420, t + dur); f.Q.value = 3;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + dur * 0.15); g.gain.setValueAtTime(gain, t + dur * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(f).connect(g).connect(this.bus || this.master);
+    o.start(t); lfo.start(t); o.stop(t + dur + 0.05); lfo.stop(t + dur + 0.05);
+    this.grain(t, 500, 0.6, dur, gain * 0.5, 'lowpass');
+  }
+  // the oni: his roar, his tread, the club raised and swung and brought down, his leap and landing, his pain
+  oni(kind) {
+    if (!this.ctx) return;
+    this.bus = this.swordBus;
+    try {
+      const t = this.ctx.currentTime + 0.005;
+      if (kind === 'roar') { this.growl(t, 92, 70, 1.5, 0.55); this.growl(t + 0.05, 140, 100, 1.3, 0.25); }
+      else if (kind === 'hurt') this.growl(t, 120, 95, 0.3, 0.3);
+      else if (kind === 'die') { this.growl(t, 110, 45, 2.4, 0.5); this.thump(t + 1.5, 50, 0.6, 0.8); }
+      else if (kind === 'step') { this.thump(t, 48, 0.25, 0.45); this.grain(t, 300, 0.7, 0.15, 0.15, 'lowpass'); }
+      else if (kind === 'raise') this.sweep(t, 150, 420, 260, 1.5, 0.5, 0.2);
+      else if (kind === 'swing') { this.sweep(t, 300, 1100, 300, 0.9, 0.35, 0.45); }
+      else if (kind === 'smash') { this.thump(t, 45, 0.7, 1.0); this.thump(t, 90, 0.3, 0.6); this.grain(t, 400, 0.6, 0.6, 0.6, 'lowpass'); this.grain(t, 1500, 1, 0.12, 0.3); }
+      else if (kind === 'leap') { this.sweep(t, 200, 900, 300, 1, 0.8, 0.35); this.growl(t, 110, 130, 0.5, 0.3); }
+      else if (kind === 'land') { this.thump(t, 38, 0.9, 1.1); this.thump(t, 80, 0.4, 0.7); this.grain(t, 350, 0.6, 0.9, 0.7, 'lowpass'); }
+    } finally { this.bus = null; }
+  }
+  // a quest given (two notes up) and finished (a short rising phrase)
+  quest(kind) {
+    if (!this.ctx) return;
+    this.bus = this.swordBus;
+    try {
+      const t = this.ctx.currentTime + 0.005;
+      if (kind === 'new') { this.ping(t, 784, 0.8, 0.12); this.ping(t + 0.16, 1175, 1.0, 0.12); }
+      else [523, 659, 784, 1047, 1319].forEach((f, i) => { this.ping(t + i * 0.11, f, 1.2, 0.12); this.ping(t + i * 0.11, f * 2, 0.6, 0.04); });
+    } finally { this.bus = null; }
+  }
+
   // the Sky Slam landing: the ground booms
   slam() {
     if (!this.ctx) return;
