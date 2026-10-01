@@ -45,8 +45,9 @@ export class CameraRig {
     // focus trails the body a little: feels like a heavy camera operator
     const target = new THREE.Vector3(player.pos.x, player.visualY + eye, player.pos.z);
     if (this.focus.lengthSq() === 0) this.focus.copy(target);
-    this.focus.x = damp(this.focus.x, target.x, 9, dt);
-    this.focus.z = damp(this.focus.z, target.z, 9, dt);
+    const follow = (player.dashFov || 0) > 0.5 ? 16 : 9;           // the tackle's dash: keep up with him
+    this.focus.x = damp(this.focus.x, target.x, follow, dt);
+    this.focus.z = damp(this.focus.z, target.z, follow, dt);
     this.focus.y = damp(this.focus.y, target.y, 5, dt);
 
     // gameplay arm
@@ -88,8 +89,8 @@ export class CameraRig {
       cam.position.x += Math.sin(t * 1.3) * s; cam.position.y += Math.sin(t * 1.7 + 1) * s;
     }
     cam.lookAt(this._look);
-    const fovT = inMenu ? 42 : 52 + 2 * run + 3 * sprint + (player.state === 'dive' ? 4 : 0) + (player.state === 'tackle' ? 7 : 0) - 26 * zoom;      // the bow zooms in
-    this.fov = damp(this.fov, fovT, zoom > 0.02 || this.fov < 50 ? 7 : 1.5, dt);
+    const fovT = inMenu ? 42 : 52 + 2 * run + 3 * sprint + (player.state === 'dive' ? 4 : 0) + (player.state === 'tackle' ? 4 : 0) + (player.dashFov || 0) - 26 * zoom;      // the bow zooms in
+    this.fov = damp(this.fov, fovT, zoom > 0.02 || this.fov < 50 || (player.dashFov || 0) > 0.5 ? 7 : 1.5, dt);
     if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
   }
 
