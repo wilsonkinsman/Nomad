@@ -3,7 +3,7 @@
 // node it grows from, which may sit on another path. What you have learned
 // is kept in the browser (localStorage). Open it from the menu or with K.
 const SAVE = 'nomad_skills';
-const GRANTED = 7;       // skill points in all, so far
+const GRANTED = 8;       // skill points in all, so far
 
 // each path is `cols` grid columns wide; a skill's `col` is its place inside its path (0.5: centred over two)
 export const PATHS = {
@@ -13,6 +13,9 @@ export const PATHS = {
 };
 
 const ICONS = {
+  // a great arrow with a bolt along it
+  thunderarrow: '<svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M6 42L40 8M40 8l-12 2M40 8l-2 12"/><path d="M12 30l6 2-2 4 6 1" opacity=".8"/><path d="M4 46l5-1M3 40l3-3" opacity=".6"/></g></svg>',
   // a blade standing in cracked ground, stones in the air round it
   earth: '<svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M24 4v26M19 10h10"/><path d="M6 36h36M24 36l-5 7M24 36l6 6M14 36l-4 5M34 36l5 4"/><path d="M9 20l4-3 3 3-3 3zM35 16l4-2 2 4-4 2z"/></g></svg>',
@@ -47,6 +50,8 @@ export const SKILLS = [
     desc: 'Tap the roll twice, fast (C or right-click). Instead of rolling you vanish in a flash of black lines and appear where the roll would have ended.' },
   { id: 'tackle', name: 'Electrical Tackle', path: 'lightning', cost: 1, requires: 'storm', row: 1, col: 1, icon: ICONS.tackle,
     desc: 'Press T while the storm is on your blade. He drops to all fours and a great cat of lightning forms around him, then the cat pounces: eight metres in a flash, straight at whatever is ahead, and rears up to rake it with both paws. The ground behind is burnt and whatever it catches is stunned.' },
+  { id: 'thunderarrow', name: 'Thunder Arrow', path: 'lightning', cost: 1, requires: 'storm', row: 2, col: 0.5, icon: ICONS.thunderarrow,
+    desc: 'With the storm on your blade, hold the bow past full draw. The camera pulls far back, you lean into it and the arrow takes the storm; release, and a great arrow of lightning tears a burnt trench sixty metres long through everything in its way. It spends the storm.' },
   // earth
   { id: 'earth', name: 'Earth Power', path: 'earth', cost: 1, requires: null, row: 0, col: 0.5, icon: ICONS.earth,
     desc: 'Press G. Drive the blade into the ground and the earth answers: stones rise and circle you. For forty seconds you take half damage, your blows throw things back, and Sky Slam raises a ring of stone. Ten seconds to recover after it fades.' },

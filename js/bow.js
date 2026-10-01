@@ -3,11 +3,15 @@
 // screen trembles. Let go to loose the arrow: it goes where the crosshair is, with gravity worked out for
 // you, and does more the longer you held. It hits the dummy and the practice enemy and sticks in them.
 //
+// With Thunder Arrow learned and the storm on his blade, holding past full draw supercharges the shot (see
+// thunderarrow.js): the camera pulls far back and he leans back into it.
+//
 // The arms are solved in AtsuModel.aimIK (the left arm reaches along the aim carrying the bow, the right hand
 // brings the string back); this file owns the state, the bow and arrow meshes and the flight of the arrows.
 import * as THREE from 'three';
 import { groundY } from './world.js';
 import { clamp, damp, dampAngle, wrapAngle } from './util.js';
+import { ThunderArrows, SUPER_TIME } from './thunderarrow.js';
 
 const CHARGE_TIME = 1.1, MIN_DRAW = 0.14, GRAVITY = 9.5;
 const LIMB = 0.4, SAG = 0.14;                       // half the bow's height; how far its tips curve toward the archer
@@ -50,7 +54,9 @@ export class Bow {
     this.nocked = buildArrow(); this.nocked.visible = false; this.mesh.add(this.nocked);
     this.attached = null;                       // the model whose scene the bow is parented to
     this.arrows = [];
-    this.state = { w: 0, yaw: 0, pitch: 0, charge: 0 };
+    this.state = { w: 0, yaw: 0, pitch: 0, charge: 0, lean: 0 };
+    this.super = 0; this.superFull = false; this.pull = 0; this.after = 0; this.arc = 0;
+    this.thunder = new ThunderArrows(game);
     this.wPrev = 0;
   }
 
@@ -78,25 +84,41 @@ export class Bow {
     this.cool = Math.max(0, this.cool - dt);
     const can = this.equipped && inPlay && P.state === 'ground' && P.grounded;
     const holding = can && input.attackHeld() && this.cool <= 0;
-    if (holding && !this.aiming) { this.aiming = true; this.charge = 0; this.full = false; game.audio?.bow('draw'); }
+    if (holding && !this.aiming) { this.aiming = true; this.charge = 0; this.full = false; this.super = 0; this.superFull = false; game.audio?.bow('draw'); }
+    const canSuper = !!(game.skills?.has('thunderarrow') && game.storm?.charged);
     if (this.aiming) {
       if (holding) {
         this.charge = Math.min(1, this.charge + dt / CHARGE_TIME);
         if (this.charge >= 1) {
           if (!this.full) { this.full = true; game.audio?.bow('full'); }
           game.rig.shake = Math.max(game.rig.shake, 0.5);       // at full draw the screen trembles
+          // keep holding with the storm on the blade: the arrow takes it
+          if (canSuper) {
+            if (this.super === 0) { game.audio?.storm('gather'); game.hud?.hint('Hold… the arrow is taking the storm', 1.5); }
+            this.super = Math.min(1, this.super + dt / SUPER_TIME);
+            if (this.super >= 1 && !this.superFull) { this.superFull = true; game.audio?.bow('full'); game.audio?.storm('zap'); game.hud?.hint('Release!', 1); }
+            game.rig.shake = Math.max(game.rig.shake, 0.4 + 0.5 * this.super);
+            game.storm.setGather(this.super * 0.85);
+          } else this.super = 0;
         }
       } else {
-        if (can && this.charge >= MIN_DRAW) this.shoot(this.charge);
-        this.aiming = false; this.charge = 0; this.full = false;
+        if (can && this.superFull && canSuper) this.shootThunder();
+        else if (can && this.charge >= MIN_DRAW) this.shoot(this.charge);
+        this.aiming = false; this.charge = 0; this.full = false; this.super = 0; this.superFull = false;
         this.cool = 0.25;
       }
     }
     this.moveScale = this.aiming ? 0.45 : 1;
     // the camera zooms in as he draws
-    const zt = this.aiming ? 0.55 + 0.45 * this.charge : 0;
+    // ... and as the storm goes into the arrow, it pulls far back instead; it stays out a moment after the shot
+    this.after = Math.max(0, this.after - dt);
+    const zt = this.aiming ? (0.55 + 0.45 * this.charge) * (1 - this.super) : 0;
     this.zoom = damp(this.zoom, zt, this.aiming ? 7 : 9, dt);
     P.aimZoom = this.zoom;
+    this.pull = damp(this.pull, Math.max(this.super, this.after > 0 ? 1 : 0), this.super > this.pull ? 3 : 1.6, dt);
+    P.aimPull = this.pull;
+    this.thunder.update(dt);
+    if (this.super > 0.02) this.crackle(dt, game);
     game.hud?.setCrosshair(this.equipped && this.zoom > 0.2, this.charge);
     // the pose he is asked to take (applied by the animator on the next frame)
     const w = damp(this.wPrev, this.aiming ? 1 : 0, this.aiming ? 12 : 9, dt); this.wPrev = w;
@@ -106,7 +128,7 @@ export class Bow {
       P.heading = dampAngle(P.heading, yaw, 14, dt);
       this.state.yaw = wrapAngle(yaw - P.heading); this.state.pitch = Math.asin(clamp(d.y, -0.95, 0.95));
     }
-    this.state.w = this.equipped ? w : 0; this.state.charge = this.charge;
+    this.state.w = this.equipped ? w : 0; this.state.charge = this.charge; this.state.lean = damp(this.state.lean, this.super, 6, dt);
     P.aimState = this.equipped && w > 0.002 ? this.state : null;
     // the meshes
     this.place(w);
@@ -132,7 +154,41 @@ export class Bow {
     const back = 0.08 + 0.2 * this.charge * w, p = m.userData.string.geometry.attributes.position;
     p.setXYZ(0, 0, LIMB, -SAG); p.setXYZ(1, 0, 0, -SAG - back * (w > 0.002 ? 1 : 0.0) - 0.0); p.setXYZ(2, 0, -LIMB, -SAG); p.needsUpdate = true;
     this.nocked.visible = this.aiming;
-    if (this.aiming) { this.nocked.position.set(0, 0, -SAG - back); this.nocked.userData.head.emissiveIntensity = this.full ? 1.6 : 0; }
+    if (this.aiming) {
+      const h = this.nocked.userData.head;
+      this.nocked.position.set(0, 0, -SAG - back); h.emissiveIntensity = this.full ? 1.6 + 2.5 * this.super : 0;
+      h.emissive.setRGB(1 - 0.75 * this.super, 0.75 - 0.15 * this.super, 0.38 + 0.62 * this.super);
+      this.nocked.scale.setScalar(1 + 0.6 * this.super);
+    }
+  }
+
+  // the storm going into the arrow: arcs over the bow, sparks drawn to the arrowhead
+  crackle(dt, G) {
+    const m = this.mesh; if (!m.visible) return;
+    m.updateMatrixWorld(true);
+    const p = (x, y, z) => new THREE.Vector3(x, y, z).applyMatrix4(m.matrixWorld);
+    this.arc -= dt;
+    while (this.arc <= 0) {
+      this.arc += 0.07 / (0.4 + this.super);
+      const a = Math.random() < 0.5 ? p(0, LIMB, -SAG) : p(0, -LIMB, -SAG), b = p(0, 0, 0.45 + 0.3 * this.super);
+      G.storm.bolt(a, b, { life: 0.08, core: 0.008, glow: 0.035, segs: 8, amp: 0.08, branches: 0 });
+    }
+    const tip = p(0, 0, 0.5);
+    for (let n = 0, c = Math.floor(dt * 70 * this.super + Math.random()); n < c; n++) {
+      const a = Math.random() * 6.28, r = 0.8 + Math.random() * 0.8;
+      const x = tip.x + Math.cos(a) * r, y = tip.y + (Math.random() - 0.5) * 1.2, z = tip.z + Math.sin(a) * r;
+      G.particles.emit('zap', x, y, z, (tip.x - x) * 4, (tip.y - y) * 4, (tip.z - z) * 4, 0.1, 1);
+    }
+    if (Math.random() < dt * 12) G.audio?.storm('crackle', this.super);
+  }
+
+  // loose the supercharged arrow: low along the ground, where he is looking
+  shootThunder() {
+    const G = this.game, F = G.player.model.aimFrame, scene = G.player.model.scene;
+    if (!F) return;
+    const start = F.G.clone().addScaledVector(F.a, 0.3).applyMatrix4(scene.matrixWorld);
+    this.thunder.fire(start, G.camera.getWorldDirection(new THREE.Vector3()));
+    this.after = 1.4;
   }
 
   // where the arrow should go: the first thing the crosshair is on, else far off

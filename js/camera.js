@@ -40,7 +40,8 @@ export class CameraRig {
     this.pull = damp(this.pull, pullT, pullT > this.pull ? 0.9 : 1.4, dt);
     const eye = player.model.camHeight ?? 1.48, hs1 = eye / 1.48;     // shorter characters: lower, closer camera
     const zoom = player.aimZoom || 0;
-    const arm = (this.dist + this.pull) * Math.sqrt(hs1) * (1 - 0.35 * zoom);
+    const far = player.aimPull || 0;          // a Thunder Arrow being charged: the camera pulls far back
+    const arm = (this.dist + this.pull) * Math.sqrt(hs1) * (1 - 0.35 * zoom) * (1 + 1.9 * far);
 
     // focus trails the body a little: feels like a heavy camera operator
     const target = new THREE.Vector3(player.pos.x, player.visualY + eye, player.pos.z);
@@ -56,7 +57,7 @@ export class CameraRig {
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
     const shoulder = 0.55 * Math.min(1, this.dist / 3.6) + 0.6 * zoom;
     const gp = this.focus.clone().addScaledVector(back, arm).addScaledVector(right, shoulder);
-    gp.y += this.pull * 0.3;
+    gp.y += this.pull * 0.3 + far * 1.6;
     const gl = this.focus.clone().addScaledVector(right, shoulder * 0.85).add(new THREE.Vector3(0, -0.05, 0));
 
     // menu orbit: slow drift around the nomad, sun behind them
@@ -89,8 +90,8 @@ export class CameraRig {
       cam.position.x += Math.sin(t * 1.3) * s; cam.position.y += Math.sin(t * 1.7 + 1) * s;
     }
     cam.lookAt(this._look);
-    const fovT = inMenu ? 42 : 52 + 2 * run + 3 * sprint + (player.state === 'dive' ? 4 : 0) + (player.state === 'tackle' ? 4 : 0) + (player.dashFov || 0) - 26 * zoom;      // the bow zooms in
-    this.fov = damp(this.fov, fovT, zoom > 0.02 || this.fov < 50 || (player.dashFov || 0) > 0.5 ? 7 : 1.5, dt);
+    const fovT = inMenu ? 42 : 52 + 2 * run + 3 * sprint + (player.state === 'dive' ? 4 : 0) + (player.state === 'tackle' ? 4 : 0) + (player.dashFov || 0) + 10 * far - 26 * zoom;      // the bow zooms in
+    this.fov = damp(this.fov, fovT, zoom > 0.02 || far > 0.02 || this.fov < 50 || (player.dashFov || 0) > 0.5 ? 7 : 1.5, dt);
     if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
   }
 

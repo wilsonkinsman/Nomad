@@ -245,6 +245,17 @@ export class Animator {
     out.hipsX = lerp(L.hipsX, O.hipsX, w); out.hipsY = lerp(L.hipsY, O.hipsY, w); out.hipsZ = lerp(L.hipsZ, O.hipsZ, w);
     out.pitch = lerp(L.pitch, O.pitch, w); out.roll = lerp(L.roll, O.roll, w); out.pivotY = lerp(L.pivotY, O.pivotY, w);
     out.grip = 0; out.sp = out.sa = null; out.aim = P.aim || null;
+    // a Thunder Arrow being charged: he leans back into the draw, feet wide, knees bent
+    const back = P.aim && P.aim.lean ? P.aim.lean * P.aim.w : 0;
+    if (back > 0.001) {
+      const lean = back;
+      const B = out.bones;
+      B.spine[0] -= 0.32 * lean; B.chest[0] -= 0.22 * lean; B.neck[0] += 0.3 * lean; B.head[0] += 0.18 * lean;
+      B.thigh_L[0] -= 0.45 * lean; B.shin_L[0] += 0.35 * lean; B.foot_L[0] += 0.1 * lean;
+      B.thigh_R[0] += 0.3 * lean; B.shin_R[0] += 0.45 * lean; B.foot_R[0] -= 0.25 * lean;
+      B.thigh_L[2] += 0.12 * lean; B.thigh_R[2] -= 0.12 * lean;
+      out.hipsY -= 0.09 * lean; out.hipsZ -= 0.06 * lean;
+    }
     if (P.attack && P.attack.w > 0.001 && w < 0.5) this.attackLayer(out, P.attack, dt);
     else { this._atkKind = null; this._atkLast = null; this._atkOff = null; this._atkVel = null; }   // layer is off: nothing stale to fade from
     return out;
