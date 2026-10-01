@@ -91,9 +91,10 @@ export class Grass {
             float patchN = nNoise(wxz * 0.13);
             float hgt = mix(0.22, 0.6, r1) * (0.6 + 0.8 * patchN) * k * (1.0 + pt.a * 0.3);
             // cut: stubble stays low for a while and then grows back, each blade a little out of step
-            float cutK = smoothstep(0.04, 0.6, texture(uCut, fract(wxz / uCutSize)).r + (r3 - 0.5) * 0.3);
-            hgt *= 1.0 - 0.88 * cutK;
-            float wid = uWidth * mix(0.7, 1.35, r2) * step(0.001, k);
+            float cutRaw = texture(uCut, fract(wxz / uCutSize)).r;
+            float cutK = smoothstep(0.04, 0.6, cutRaw + (r3 - 0.5) * 0.3 * smoothstep(0.0, 0.15, cutRaw));
+            hgt *= 1.0 - 0.8 * cutK;
+            float wid = uWidth * mix(0.7, 1.35, r2) * step(0.001, k) * (1.0 + 0.5 * cutK);
             float yaw = r2 * 6.2831;
             vec2 fdir = vec2(sin(yaw), cos(yaw)), sdir = vec2(fdir.y, -fdir.x);
             float t = position.y;
@@ -129,8 +130,8 @@ export class Grass {
             vec3 dryc = mix(vec3(0.07, 0.06, 0.02), vec3(0.3, 0.25, 0.1), vT);
             vec3 gc = mix(lush, dryc, vTint.y * 0.7);
             gc *= mix(0.75, 1.2, vTint.x) * mix(0.85, 1.1, vTint.z);
-            gc = mix(gc, gc * vec3(1.4, 1.3, 0.85) + vec3(0.025, 0.03, 0.0), vCut * 0.75);     // the cut ends show pale
-            diffuseColor.rgb = gc * mix(0.45, 1.0, smoothstep(0.0, 0.5, vT));`);
+            gc = mix(gc, vec3(0.36, 0.38, 0.13) * mix(0.8, 1.15, vTint.x), vCut * 0.8);     // the cut ends show pale
+            diffuseColor.rgb = gc * mix(mix(0.45, 0.95, vCut), 1.0, smoothstep(0.0, 0.5, vT));`);
         addTranslucency(s, '0.55 * vT');
       };
       const mesh = new THREE.Mesh(geo, mat);

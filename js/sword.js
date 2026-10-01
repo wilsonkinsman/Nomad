@@ -385,10 +385,10 @@ export class Weapon {
     const wheat = s.wheat > 0.35, grass = !wheat && s.grass > 0.3 && s.path < 0.6;
     if (!wheat && !grass) return;
     if (h > (wheat ? 1.15 : 0.8) || h < -0.3) return;
-    G.cut.stamp(x, z, 0.17 + 0.05 * along, 1);
-    if (Math.random() < 0.55) {
+    G.cut.stamp(x, z, 0.24 + 0.08 * along, 1);
+    if (Math.random() < 0.6) {
       const up = clamp(h, 0.1, 0.7);
-      G.particles.emit(wheat ? 'seed' : 'grass', x, gy + up, z, vx * 0.3, 1.2 + Math.random(), vz * 0.3, 1.1, wheat ? 3 : 2);
+      G.particles.emit(wheat ? 'chaff' : 'clip', x, gy + up, z, vx * 0.35, 1.4 + Math.random() * 1.2, vz * 0.35, 1.3, wheat ? 3 : 3);
     }
   }
 

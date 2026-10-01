@@ -88,8 +88,9 @@ export class Wheat {
             float field = nNoise(wxz * 0.09);
             float hgt = mix(0.95, 1.25, r1) * (0.85 + 0.3 * field) * mix(0.75, 1.0, smoothstep(0.35, 0.8, zn.g)) * k;
             // cut: the stalks are lopped to stubble, and grow back slower than grass does
-            float cutK = smoothstep(0.02, 0.85, texture(uCut, fract(wxz / uCutSize)).r + (r3 - 0.5) * 0.25);
-            hgt *= 1.0 - 0.84 * cutK;
+            float cutRaw = texture(uCut, fract(wxz / uCutSize)).r;
+            float cutK = smoothstep(0.02, 0.85, cutRaw + (r3 - 0.5) * 0.25 * smoothstep(0.0, 0.15, cutRaw));
+            hgt *= 1.0 - 0.8 * cutK;
             float t = position.y;
             float yaw = r2 * 6.2831;
             // ears nod away from the stalk's lean; leaves point sideways
