@@ -6,7 +6,7 @@
 import { BONES, LEG } from './nomad.js';
 import { clamp, lerp, smoothstep, damp } from './util.js';
 import { evalMove } from './swordmoves.js';
-import { DOWN, RUN, TOTAL } from './tackle.js';
+import { DOWN, RUN, UP, TOTAL } from './tackle.js';
 
 const TAU = Math.PI * 2;
 
@@ -340,7 +340,7 @@ export class Animator {
       // builds he coils lower and trembles; in the dash he is stretched out flat, arms thrown forward and legs
       // driven back
       target = 1;
-      const dn = smoothstep(0, DOWN * 0.55, t) * (1 - smoothstep(DOWN + RUN, TOTAL, t));
+      const dn = smoothstep(0, DOWN * 0.55, t) * (1 - smoothstep(UP, TOTAL, t));
       const rn = smoothstep(DOWN - 0.04, DOWN + 0.02, t) * (1 - smoothstep(DOWN + RUN, DOWN + RUN + 0.16, t));
       const cn = smoothstep(0.1, DOWN, t) * (1 - rn), tr = 0.03 * cn * Math.sin(this.t * 70);
       O.pitch = 1.12 * dn + 0.18 * rn; O.pivotY = lerp(0.95, 0.46, dn) - 0.07 * cn;

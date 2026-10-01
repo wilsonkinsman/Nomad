@@ -4,7 +4,11 @@
 //   dash     he is across DIST metres almost at once, along a line worked out at the moment he goes: it stops
 //            short of trees and rocks and the edge of the plain. Everything under that line is scorched (grass
 //            cut away, leaf litter burnt, ground blackened, snow melted), whatever is near it is hurt, stunned
-//            and thrown aside, and a bolt is left hanging along the path for a moment.      (DASH s)
+//            and thrown aside, and a bolt is left hanging along the path for a moment. The cat pounces with
+//            him, in an arc, and if something is ahead (within LOCK metres, in a cone) the dash goes for it
+//            and stops right on top of it.                                                   (DASH s)
+//   claw     the cat rears up and rakes twice, right paw then left: each swipe leaves glowing claw marks in
+//            the air and burnt into the ground and hurts and stuns whatever is in front.     (CLAW s)
 //   rise     the cat fades and he gets up                                                  (RISE s)
 // The pose is in anim.js (state 'tackle'); player.js asks drive() for his velocity every frame.
 import * as THREE from 'three';
@@ -13,9 +17,10 @@ import { smoothstep, dampAngle } from './util.js';
 import { STUN } from './storm.js';
 import { CatCloak } from './catcloak.js';
 
-export const GATHER = 0.42, DASH = 0.14, RISE = 0.4;
-export const DOWN = GATHER, RUN = DASH, TOTAL = GATHER + DASH + RISE;     // the names the animator reads
-const DIST = 8.5, DAMAGE = 38, REACH = 1.25, KNOCK = 1.4;
+export const GATHER = 0.42, DASH = 0.16, CLAW = 0.5, RISE = 0.35;
+export const DOWN = GATHER, RUN = DASH, UP = GATHER + DASH + CLAW, TOTAL = UP + RISE;     // the names the animator reads
+const DIST = 8.5, LOCK = 10, DAMAGE = 38, REACH = 1.25, KNOCK = 1.4;
+const SWIPES = [0.03 + 0.12, 0.2 + 0.12], SWIPE_DMG = 14, SWIPE_REACH = 2.6;   // when each paw lands (s into the claw), what it does
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
 
 export class Tackle {
@@ -26,6 +31,7 @@ export class Tackle {
     this.from = new THREE.Vector3(); this.to = new THREE.Vector3(); this.len = 0; this.blocked = false;
     this.last = new THREE.Vector3(); this.arc = 0; this.snd = 0; this.went = false; this.landed = false; this.smoulder = false;
     this.cat = new CatCloak(game.scene);
+    this.swiped = 0; this.slashes = []; this.target = null;
   }
 
   // T. Returns true if the tackle began.
@@ -35,7 +41,7 @@ export class Tackle {
     if (!G.storm || !G.storm.charged) { G.hud?.hint('The tackle needs the storm on your blade: call it with R first', 3); return false; }
     if (P.state !== 'ground' || !P.grounded || G.bow?.equipped) return false;
     this.aimAt(P, true);
-    this.hit.clear(); this.arc = 0; this.snd = 0; this.went = false; this.landed = false; this.smoulder = false;
+    this.hit.clear(); this.arc = 0; this.snd = 0; this.went = false; this.landed = false; this.smoulder = false; this.swiped = 0; this.target = null;
     P.setState('tackle');
     P.vel.set(0, 0, 0);
     G.audio?.storm('tackle');
@@ -56,9 +62,22 @@ export class Tackle {
 
   // how far the dash can go before something hard (a tree, a rock, the edge of the plain) is in the way
   plan(P) {
+    // something to pounce on? the nearest target ahead, inside a cone and LOCK metres: go straight for it
+    // and stop on top of it
+    let want = DIST, best = null, bd = LOCK;
+    for (const c of this.game.enemies?.targets || []) {
+      if (c.dead) continue;
+      const dx = c.x - P.pos.x, dz = c.z - P.pos.z, d = Math.hypot(dx, dz);
+      if (d < bd && d > 0.3 && (dx * this.dir.x + dz * this.dir.y) / d > 0.77) { bd = d; best = c; }
+    }
+    this.target = best;
+    if (best) {
+      const dx = best.x - P.pos.x, dz = best.z - P.pos.z, d = Math.hypot(dx, dz);
+      this.dir.set(dx / d, dz / d); want = Math.max(0, d - best.r - 0.75);
+    }
     let d = 0;
     this.blocked = false;
-    for (let s = 0.25; s <= DIST + 1e-6; s += 0.25) {
+    for (let s = 0.25; s <= want + 1e-6; s += 0.25) {
       const x = P.pos.x + this.dir.x * s, z = P.pos.z + this.dir.y * s;
       let hard = Math.hypot(x, z) > PLAY_RADIUS - 0.5;
       for (const c of P.colliders) { if (c.soft) continue; const dx = x - c.x, dz = z - c.z, r = c.r + 0.34; if (dx * dx + dz * dz < r * r) { hard = true; break; } }
@@ -133,13 +152,19 @@ export class Tackle {
   update(dt, G) {
     const P = G.player;
     P.dashFov = Math.max(0, (P.dashFov || 0) - dt * 40);
+    this.updateSlashes(dt);
     const on = P.state === 'tackle', t = on ? P.stateT : 99;
-    // how much cat there is: it forms over the gather, holds through the dash and fades as he rises
-    const k = on ? smoothstep(0, GATHER * 0.8, t) * (1 - smoothstep(GATHER + DASH + 0.05, TOTAL, t)) : 0;
+    // how much cat there is: it forms over the gather, holds through the pounce and the claws, fades as he rises
+    const k = on ? smoothstep(0, GATHER * 0.8, t) * (1 - smoothstep(UP, TOTAL, t)) : 0;
     const gather = on && t < GATHER ? smoothstep(0.05, GATHER, t) : 0;
-    const dash = on && t >= GATHER ? 1 - smoothstep(GATHER + DASH, GATHER + DASH + 0.2, t) : 0;
-    this.cat.update(G.time, P.pos, P.heading, k, gather, dash);
+    const leap = on && t >= GATHER && t < GATHER + DASH ? (t - GATHER) / DASH : -1;
+    const stretch = on && t >= GATHER ? 1 - smoothstep(GATHER + DASH, GATHER + DASH + 0.12, t) : 0;
+    const claw = on && t >= GATHER + DASH && t < UP ? t - GATHER - DASH : -1;
+    this.cat.update(G.time, P.pos, P.heading, { k, gather, leap, stretch, claw });
     if (!on || k <= 0.02) return;
+    // the paws land
+    while (claw >= 0 && this.swiped < SWIPES.length && claw >= SWIPES[this.swiped]) this.swipe(P, this.swiped++ % 2 ? -1 : 1);
+    const dash = stretch;
     const fx = this.dir.x, fz = this.dir.y, px = P.pos.x, pz = P.pos.z, py = P.pos.y;
     // arcs crawling over the cat
     this.arc -= dt;
@@ -167,6 +192,70 @@ export class Tackle {
     if (dist > 0.01) this.strike(this.last, P.pos);
     if (dash > 0.5) for (let n = 0; n < 6; n++) G.particles.emit('zap', px - fx * Math.random() * dist, py + 0.2 + Math.random() * 0.8, pz - fz * Math.random() * dist, -fx * 4 + (Math.random() - 0.5) * 3, Math.random() * 2, -fz * 4 + (Math.random() - 0.5) * 3, 0.6, 1);
     this.last.copy(P.pos);
+  }
+
+  // one paw rakes down across the front (side 1: the right paw, -1: the left)
+  swipe(P, side) {
+    const G = this.game, fx = Math.sin(P.heading), fz = Math.cos(P.heading), rx = fz, rz = -fx;
+    // what is in front of the cat takes it
+    let at = null;
+    for (const c of G.enemies?.targets || []) {
+      if (c.dead) continue;
+      const ex = c.x - P.pos.x, ez = c.z - P.pos.z, d = Math.hypot(ex, ez);
+      if (d > SWIPE_REACH + c.r || (ex * fx + ez * fz) / Math.max(d, 1e-3) < 0.2) continue;
+      c.onHit?.('claw', SWIPE_DMG, ex, ez, { zap: true, stun: STUN, knock: 0.35 });
+      const cy = groundY(c.x, c.z) + 1.0;
+      for (let i = 0; i < 16; i++) G.particles.emit('zap', c.x, cy, c.z, (Math.random() - 0.5) * 6 + rx * side * 3, Math.random() * 3 - 1, (Math.random() - 0.5) * 6 + rz * side * 3, 0.8, 1);
+      if (!at) at = new THREE.Vector3(c.x - fx * 0.3, cy, c.z - fz * 0.3);
+    }
+    // the slash hangs in the air where the paw went through: on what it hit, else in front of the cat
+    const p = at || new THREE.Vector3(P.pos.x + fx * 1.75, P.pos.y + 1.05, P.pos.z + fz * 1.75);
+    this.slash(p, P.heading, side);
+    // and the claws catch the ground: three burnt furrows raked across the front, the grass torn up
+    for (let k = -1; k <= 1; k++) for (let s = 0; s <= 6; s++) {
+      const a = s / 6, w = (a - 0.5) * 1.1 * side, x = P.pos.x + fx * (1.15 + a * 0.9) + rx * (w + k * 0.2), z = P.pos.z + fz * (1.15 + a * 0.9) + rz * (w + k * 0.2);
+      G.burn.stamp(x, z, 0.16, 1); G.cut.stamp(x, z, 0.2, 1);
+    }
+    G.leaves.kick(P.pos.x + fx * 1.6, P.pos.z + fz * 1.6, 1.2, 1.4, (fx - rx * side) * 4, (fz - rz * side) * 4);
+    G.leaves.singe(P.pos.x + fx * 1.6, P.pos.z + fz * 1.6, 0.9, 0.8);
+    G.audio?.sword('cut'); if (at) { G.audio?.storm('zap'); G.audio?.sword('hit'); G.hitStop = Math.max(G.hitStop, 0.06); }
+    G.rig.shake = Math.max(G.rig.shake, at ? 0.5 : 0.25);
+  }
+
+  // three glowing claw marks, drawn in as the paw rakes through and fading
+  slash(p, heading, side) {
+    if (!this.slashGeo) {
+      const ribbon = (off, w0) => {
+        const pos = [], idx = [], N = 14;
+        for (let i = 0; i <= N; i++) {
+          const s = i / N, x = 0.55 - 1.1 * s + off, y = 0.6 - 1.2 * s + off * 0.4, z = 0.25 * Math.sin(Math.PI * s), w = w0 * Math.sin(Math.PI * Math.min(1, s * 1.15 + 0.04));
+          // across the stroke: perpendicular to its (diagonal) direction
+          pos.push(x - w * 0.74, y + w * 0.67, z, x + w * 0.74, y - w * 0.67, z);
+          if (i < N) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+        }
+        const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); return g;
+      };
+      this.slashGeo = [-0.2, 0, 0.2].map((o) => ribbon(o, 0.035));
+      this.slashGlow = [-0.2, 0, 0.2].map((o) => ribbon(o, 0.1));
+    }
+    const g = new THREE.Group();
+    const core = new THREE.MeshBasicMaterial({ color: 0xe6f2ff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+    const glow = new THREE.MeshBasicMaterial({ color: 0x3f7dff, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, fog: false });
+    for (const geo of this.slashGlow) g.add(new THREE.Mesh(geo, glow));
+    for (const geo of this.slashGeo) g.add(new THREE.Mesh(geo, core));
+    g.children.forEach((m) => { m.frustumCulled = false; m.renderOrder = 15; });
+    g.position.copy(p); g.rotation.set(0, heading, 0); g.scale.set(side * 1.5, 1.5, 1.5);
+    this.game.scene.add(g);
+    this.slashes.push({ g, core, glow, t: 0 });
+  }
+  updateSlashes(dt) {
+    for (let i = this.slashes.length - 1; i >= 0; i--) {
+      const s = this.slashes[i]; s.t += dt;
+      const draw = Math.min(1, s.t / 0.05), fade = 1 - Math.max(0, (s.t - 0.08) / 0.3);
+      s.g.scale.y = Math.abs(s.g.scale.x) * (0.25 + 0.75 * draw);
+      s.core.opacity = fade; s.glow.opacity = 0.6 * fade;
+      if (fade <= 0) { this.game.scene.remove(s.g); s.core.dispose(); s.glow.dispose(); this.slashes.splice(i, 1); }
+    }
   }
 
   // everything within reach of the stretch of path from a to b

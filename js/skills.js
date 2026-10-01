@@ -34,7 +34,7 @@ export const SKILLS = [
   { id: 'storm', name: 'Storm Call', path: 'lightning', cost: 1, requires: 'skyslam', row: 1, icon: ICONS.storm,
     desc: 'Press R. Hold the blade straight up and call down lightning onto it. For forty-five seconds the sword crackles: it hits harder, stuns what it hits and singes the leaves. Once it fades the sky needs ten seconds before it will answer again.' },
   { id: 'tackle', name: 'Electrical Tackle', path: 'lightning', cost: 1, requires: 'storm', row: 2, icon: ICONS.tackle,
-    desc: 'Press T while the storm is on your blade. He drops to all fours and a great cat of lightning forms around him, then he is across eight metres in a flash, burning the ground behind him and stunning whatever is in the way.' },
+    desc: 'Press T while the storm is on your blade. He drops to all fours and a great cat of lightning forms around him, then the cat pounces: eight metres in a flash, straight at whatever is ahead, and rears up to rake it with both paws. The ground behind is burnt and whatever it catches is stunned.' },
 ];
 
 export class Skills {

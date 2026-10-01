@@ -110,29 +110,52 @@ export class CatCloak {
     scene.add(this.root);
   }
 
-  // k: how much of it there is (0 gone, 1 whole); gather: 0..1 while it builds; dash: 0..1 in the leap
-  update(time, pos, heading, k, gather, dash) {
-    const R = this.root;
+  // s: { k: how much of it there is (0 gone, 1 whole), gather: 0..1 while it builds, leap: 0..1 through the
+  // pounce (-1 when not leaping), stretch: 0..1 how long it is drawn out, claw: seconds into the clawing (-1 when not) }
+  update(time, pos, heading, s) {
+    const R = this.root, { k, gather } = s, leaping = s.leap >= 0, u = leaping ? s.leap : 0, st = s.stretch;
     R.visible = k > 0.01;
     if (!R.visible) return;
     this.mat.uniforms.uTime.value = time;
     this.mat.uniforms.uK.value = k;
-    this.mat.uniforms.uFlame.value = 1 + gather * 0.6 + dash * 0.25;
+    this.mat.uniforms.uFlame.value = 1 + gather * 0.6 + st * 0.25;
     this.eyeM.opacity = k;
-    R.position.copy(pos); R.rotation.set(0, heading, 0);
-    // it grows out of him, crouches as it gathers, and stretches long in the leap
+    // it grows out of him, and stretches long in the leap
     const grow = (0.55 + 0.45 * Math.min(1, k * 1.4)) * 0.88;
-    R.scale.set(grow * (1 - 0.08 * dash), grow * (1 - 0.12 * gather - 0.1 * dash), grow * (1 + 0.4 * dash));
-    this.body.position.y = -0.12 * gather + 0.05 * dash;
-    this.head.rotation.set(0.35 * gather - 0.25 * dash + 0.04 * Math.sin(time * 40) * gather, 0.05 * Math.sin(time * 31) * gather, 0);
+    R.position.copy(pos); R.rotation.set(0, heading, 0);
+    R.scale.set(grow * (1 - 0.08 * st), grow * (1 - 0.1 * st), grow * (1 + 0.4 * st));
+    // the pounce: up in an arc, nose high as it springs and diving nose-first onto what it is after
+    R.position.y += leaping ? 0.95 * Math.sin(Math.PI * u) : 0;
+    // the claws: it rears up on its hind legs and rakes, right paw then left
+    const ct = s.claw, clawing = ct >= 0;
+    const rear = clawing ? 0.78 * Math.min(1, ct / 0.08) * (1 - Math.min(1, Math.max(0, (ct - 0.36) / 0.14))) : 0;
+    // pitch of the whole body: crouched (nose down, hindquarters up) while it gathers, nose up to nose down
+    // through the leap, reared back while it claws; turned about the hips so the hind feet stay put
+    const pitch = 0.14 * gather + (leaping ? -0.35 + 0.8 * u : 0) - rear;
+    const wig = 0.08 * Math.sin(time * 30) * gather;          // the wiggle before a cat pounces
+    const py = 0.75, pz = leaping ? 0 : -0.6, c = Math.cos(pitch), sn = Math.sin(pitch);
+    this.body.rotation.set(pitch, 0, wig);
+    this.body.position.set(0, py - (py * c - pz * sn) - 0.12 * gather, pz - (py * sn + pz * c));
+    this.head.rotation.set(0.35 * gather - 0.25 * st + 0.04 * Math.sin(time * 40) * gather + 0.3 * rear, 0.05 * Math.sin(time * 31) * gather, 0);
     for (const L of this.legs) {
-      const f = L.userData.front;
-      // gathering: the forepaws knead; the leap: forelegs thrown forward, hind legs driven back
-      L.rotation.x = f ? -0.25 * gather + 0.06 * Math.sin(time * 26 + L.position.x * 9) * gather - 0.7 * dash : 0.3 * gather + 0.75 * dash;
+      const f = L.userData.front, side = L.position.x > 0 ? 1 : -1;
+      if (clawing && f) {
+        // one swipe: lift the paw high and forward, then rake it down and back across the front
+        const tau = ct - (side > 0 ? 0.03 : 0.2);
+        let x = -0.3, z = 0;
+        if (tau >= 0 && tau < 0.09) { const e = tau / 0.09; x = -0.3 - 2.3 * e * e; z = side * 0.45 * e; }
+        else if (tau >= 0.09 && tau < 0.15) { const e = (tau - 0.09) / 0.06; x = -2.6 + 3.2 * e; z = side * (0.45 - 0.9 * e); }
+        else if (tau >= 0.15 && tau < 0.32) { const e = (tau - 0.15) / 0.17; x = 0.6 - 0.9 * e; z = -side * 0.45 * (1 - e); }
+        L.rotation.set(x, 0, z);
+        continue;
+      }
+      // gathering: the forepaws knead; the leap: forelegs reaching, hind legs driven back
+      const lx = f ? -0.25 * gather + 0.06 * Math.sin(time * 26 + L.position.x * 9) * gather - 1.1 * st : 0.3 * gather + 0.85 * st + 0.25 * rear;
+      L.rotation.set(lx, 0, 0);
     }
     for (const T of this.tails) {
-      const s = T.userData.s;
-      T.rotation.set(-0.2 * gather + 0.95 * dash + 0.08 * Math.sin(time * 3.1 + s), 0, s * 0.18 * Math.sin(time * 2.3 + s * 1.7) * (1 - dash));
+      const sd = T.userData.s;
+      T.rotation.set(-0.2 * gather + 0.95 * st + 0.4 * rear + 0.08 * Math.sin(time * 3.1 + sd), 0, sd * (0.18 + 0.25 * rear) * Math.sin(time * (2.3 + 4 * rear) + sd * 1.7) * (1 - st));
     }
   }
 }
