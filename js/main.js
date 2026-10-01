@@ -23,6 +23,8 @@ import { Nomad } from './nomad.js';
 import { Wind } from './wind.js';
 import { Input } from './input.js';
 import { CameraRig } from './camera.js';
+import { Skills } from './skills.js';
+import { Flash } from './flash.js';
 
 const QUALITY = {
   low:    { ratio: 0.6,  msaa: 0, shadow: 1024, veg: 0.5 },
@@ -115,7 +117,10 @@ async function boot() {
   game.hud = new Hud(game);
   game.fireflies = new Fireflies(game, softSprite());
   game.contact = new BodyContact(game);
+  game.skills = new Skills();
+  game.flash = new Flash(game);
   game.systems.push(game.grass, game.wheat, game.snow, game.leaves, game.props, game.particles, game.fireflies, game.hud, game.audio);
+  game.systems.push(game.flash);
   game.systems.unshift(game.contact);    // body hitboxes stamp before the snow and leaves update
   wireEvents();
   game.sky.setNight(settings.night);
@@ -197,8 +202,15 @@ $('seg-character').onclick = async (e) => {
   syncMenu();
 };
 $('seg-quality').onclick = (e) => { const q = e.target.dataset.q; if (!q) return; settings.quality = q; saveSettings(); syncMenu(); applyQuality(); };
+$('btn-skills').onclick = () => game.skills.open();
 $('vol').oninput = (e) => { settings.volume = +e.target.value; saveSettings(); game.audio?.setVolume(settings.volume); };
 syncMenu();
+addEventListener('keydown', (e) => {
+  if (!game.skills) return;
+  // K opens the skill tree (from the game it opens the menu behind it); Esc or K closes it again
+  if (e.code === 'KeyK' && !e.repeat) { if (game.state === 'play') showMenu(true); game.skills.toggle(); return; }
+  if (e.code === 'Escape' && game.skills.isOpen) { game.skills.close(); e.stopImmediatePropagation(); return; }
+}, true);
 addEventListener('keydown', (e) => {
   if (e.code === 'Escape' && game.state === 'play' && !input.locked) showMenu(true);
 });

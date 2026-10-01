@@ -22,6 +22,7 @@
     <div class="menu-jp"><ruby>旅人<rt>たびびと</rt></ruby></div>
     <div class="menu-buttons">
       <button id="btn-start" class="mbtn primary">Wander</button>
+      <button id="btn-skills" class="mbtn">Skills <kbd>K</kbd></button>
       <div class="menu-row">
         <span>Night mode</span>
         <button id="btn-night" class="toggle" aria-pressed="false"><i></i></button>
@@ -48,6 +49,7 @@
       <div><b>WASD</b> move</div><div><b>Shift</b> sprint</div><div><b>Space</b> jump</div>
       <div><b>C</b> / <b>Right-click</b> dive</div><div><b>X</b> walk / jog</div><div><b>Mouse</b> look · wheel zoom</div>
       <div><b>Click</b> / <b>F</b> sword (draw, cut, chop, thrust)</div>
+      <div><b>C</b> twice  flash roll <span class="dim">(skill)</span></div><div><b>K</b> skill tree</div>
       <div><b>Esc</b> menu</div><div><b>H</b> show hitboxes</div>
       <div><b>Gamepad</b> supported</div>
     </div>
@@ -63,6 +65,15 @@
   <div id="hint"></div>
 </div>
 <div id="click-to-look" hidden>Click to look around</div>
+<canvas id="flash-fx"></canvas>
+
+<div id="skills" hidden>
+  <div class="sk-card" role="dialog" aria-label="Skills">
+    <div class="sk-head"><h2>Skills</h2><span id="sk-points"></span><button id="sk-close" class="sk-x" aria-label="Close">&times;</button></div>
+    <div id="sk-tree"></div>
+    <div class="sk-foot"><button id="sk-reset" class="sk-link">Give the points back</button><span>K or Esc to close</span></div>
+  </div>
+</div>
 
 <script type="module" src="js/main.js"></script>
 

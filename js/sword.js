@@ -213,7 +213,7 @@ export class Weapon {
     const P = this.player, G = this.game, input = G.input;
     if (this.freeze) { P.vel.set(0, 0, 0); this.moveScale = 0; this.faceLock = true; return; }
     if (inMenu) { if (this.kind) this.reset(); return; }
-    if (P.state === 'dive' || P.state === 'roll' || P.state === 'flop' || P.state === 'getup') { if (this.kind) this.reset(); this.w = 0; return; }
+    if (P.state === 'dive' || P.state === 'roll' || P.state === 'flop' || P.state === 'getup' || P.state === 'flash') { if (this.kind) this.reset(); this.w = 0; return; }
     if (input.attack()) this.press();
     // the legs take the sword stance only while he is not walking; blended, never switched
     this.legs = damp(this.legs, input.move().mag > 0.2 ? 0 : 1, 9, dt);

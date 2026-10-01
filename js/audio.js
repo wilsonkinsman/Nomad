@@ -129,6 +129,17 @@ export class Audio {
     if (s.kind === 'leaves') for (let i = 0; i < 30; i++) this.grain(t + Math.random() * 0.35, 2500 + Math.random() * 4000, 2.5, 0.008, 0.25 * k);
   }
 
+  // Flash Roll: a sharp rising hiss as he goes, a low thump and a falling hiss as he arrives
+  flash(kind) {
+    if (!this.ctx) return;
+    this.bus = this.swordBus;
+    try {
+      const t = this.ctx.currentTime + 0.005;
+      if (kind === 'out') this.sweep(t, 400, 5200, 7800, 1.1, 0.17, 0.3);
+      else { this.sweep(t, 7000, 1800, 500, 1.0, 0.26, 0.26); this.thump(t + 0.03, 130, 0.16, 0.32); }
+    } finally { this.bus = null; }
+  }
+
   whoosh() {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = this.noise;

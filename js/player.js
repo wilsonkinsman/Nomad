@@ -84,7 +84,7 @@ export class Player {
 
     // ---------------------------------------------------------------- intent
     let mx = 0, mz = 0, mag = 0;
-    const busy = this.state === 'dive' || this.state === 'roll' || this.state === 'flop' || this.state === 'getup';
+    const busy = this.state === 'dive' || this.state === 'roll' || this.state === 'flop' || this.state === 'getup' || this.state === 'flash';
     if (!inMenu && !busy) {
       const m = input.move(), b = g.rig.basis();
       mx = b.fx * m.y + b.rx * m.x; mz = b.fz * m.y + b.rz * m.x;
@@ -123,6 +123,8 @@ export class Player {
       this.vel.x *= Math.exp(-6 * dt); this.vel.z *= Math.exp(-6 * dt);
     } else if (this.state === 'getup') {
       this.vel.x *= Math.exp(-10 * dt); this.vel.z *= Math.exp(-10 * dt);
+    } else if (this.state === 'flash') {
+      this.vel.x = this.vel.z = 0;
     }
     const sp = Math.hypot(this.vel.x, this.vel.z);
     // heading follows travel direction, slower at speed (momentum)
@@ -134,6 +136,9 @@ export class Player {
     this.turnRate = dt > 0 ? wrapAngle(this.heading - prevHeading) / dt : 0;
     this.accel = dt > 0 ? (sp - this._prevSpeed) / dt : 0;
     this._prevSpeed = sp;
+
+    // ---------------------------------------------------------------- flash roll: the roll tapped twice
+    if (!inMenu && input.diveDouble() && (this.state === 'dive' || this.state === 'roll') && this.diveFrom) g.flash?.trigger(this);
 
     // ---------------------------------------------------------------- jump & dive
     this.coyote = this.grounded ? 0.12 : this.coyote - dt;
@@ -148,6 +153,7 @@ export class Player {
         if (mag > 0) { dir.set(mx, mz); this.heading = Math.atan2(mx, mz); }
         const v = clamp(sp + 2.4, 4.6, 8.2) * (1 - 0.25 * deep);
         this.vel.set(dir.x * v, 3.6 - 0.6 * deep, dir.y * v);
+        this.diveFrom = this.pos.clone(); this.diveDir = dir.clone(); this.diveSpeed = v; this.diveVy = this.vel.y;     // what the flash roll works from
         this.grounded = false;
         this.setState('dive');
         this.emit('dive', this.pos.clone(), S);

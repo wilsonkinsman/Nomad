@@ -15,7 +15,7 @@ export class Input {
     addEventListener('keydown', (e) => {
       if (!this.enabled) return;
       if (['Space', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.code)) e.preventDefault();
-      if (!this.keys.has(e.code)) this.pressed.add(e.code);
+      if (!this.keys.has(e.code)) { this.pressed.add(e.code); if (e.code === 'KeyC') this.tapDive(); }
       this.keys.add(e.code);
       if (e.code === 'KeyX') this.walkToggle = !this.walkToggle;
     });
@@ -24,7 +24,7 @@ export class Input {
     canvas.addEventListener('mousedown', (e) => {
       if (!this.enabled) return;
       if (!this.locked) { canvas.requestPointerLock?.(); return; }
-      if (e.button === 2) this.pressed.add('Dive');
+      if (e.button === 2) { this.pressed.add('Dive'); this.tapDive(); }
       if (e.button === 0) this.pressed.add('Attack');
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -46,7 +46,8 @@ export class Input {
     P.lx = dz(g.axes[2] || 0); P.ly = dz(g.axes[3] || 0);
     const b = (i) => !!(g.buttons[i] && g.buttons[i].pressed);
     const edge = (i, name) => { if (b(i) && !this._padPrev[i]) this.pressed.add(name); };
-    edge(0, 'Space'); edge(1, 'Dive'); edge(2, 'Dive'); edge(3, 'Attack'); edge(9, 'Escape');
+    edge(0, 'Space'); edge(1, 'Dive'); edge(2, 'Dive'); if ((b(1) && !this._padPrev[1]) || (b(2) && !this._padPrev[2])) this.tapDive();
+     edge(3, 'Attack'); edge(9, 'Escape');
     if (b(10) && !this._padPrev[10]) P.sprintLatch = !P.sprintLatch;
     P.sprint = b(5) || b(7) || (P.sprintLatch && Math.hypot(P.x, P.y) > 0.5);
     if (Math.hypot(P.x, P.y) < 0.2) P.sprintLatch = false;
@@ -70,6 +71,9 @@ export class Input {
   sprint() { return this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') || this.pad.sprint; }
   jump() { return this.pressed.has('Space'); }
   dive() { return this.pressed.has('KeyC') || this.pressed.has('Dive'); }
+  // the roll tapped twice within a third of a second
+  tapDive() { const now = performance.now(); if (now - (this._lastDive || -1e9) < 320) { this.pressed.add('DiveDouble'); this._lastDive = 0; } else this._lastDive = now; }
+  diveDouble() { return this.pressed.has('DiveDouble'); }
   attack() { return this.pressed.has('Attack') || this.pressed.has('KeyF'); }
   endFrame() { this.pressed.clear(); this.lookX = 0; this.lookY = 0; this.wheel = 0; }
 }
