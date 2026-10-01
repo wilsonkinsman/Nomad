@@ -38,8 +38,12 @@ export const MOVES = {
   storm:    { dur: 2.2, swap: 0.08, hit: null, chain: 1.5, cancel: 1.95, next: 'overhead' },
   // Earth Power: the blade raised point down and driven into the ground; the earth answers at QUAKE_AT
   quake:    { dur: 1.55, swap: 0.08, hit: null, chain: 1.0, cancel: 1.25, next: 'overhead' },
+  // Wind Call: the blade held out level while he turns once on the spot (GALE_SPIN), then swept up overhead as
+  // the wind settles on him at GALE_AT; the blade leaves a trail all the way round
+  gale:     { dur: 1.75, swap: 0.08, hit: null, chain: 1.3, cancel: 1.5, next: 'overhead', trail: [0.2, 1.08] },
 };
 const QUAKE_AT = 0.44;
+const GALE_SPIN = [0.22, 0.92], GALE_AT = 1.02;
 const KNOCK = 1.1;        // how far a blow throws things while the earth is with him
 const STORM_GATHER = 0.5, STORM_STRIKE = 1.25;
 const CHARGED = 1.5;      // what a blow does while the blade holds the storm
@@ -274,6 +278,14 @@ export class Weapon {
     if (this.kind && !this.waitingOn && !(MOVES[this.kind].cancel != null && this.t >= MOVES[this.kind].cancel)) return;
     this.begin('quake');
   }
+  // V: turn once with the blade held out and call up the wind (a skill on the Wind path)
+  windCall() {
+    const P = this.player, G = this.game, S = G.skills;
+    if (!S || !S.has('wind')) { G.hud?.hint('Learn Wind Call in the skill tree (K)', 3); return; }
+    if (!P.grounded || P.state !== 'ground' || G.bow?.equipped || this.kind === 'gale' || !G.gale || !G.gale.ready(G)) return;
+    if (this.kind && !this.waitingOn && !(MOVES[this.kind].cancel != null && this.t >= MOVES[this.kind].cancel)) return;
+    this.begin('gale');
+  }
   // the blade is up and a blow lands: turn it aside
   get parrying() { return this.kind === 'parry' && this.t >= PARRY_WINDOW[0] && this.t <= PARRY_WINDOW[1]; }
   // called by whatever is hitting him; true if the blow was turned aside (and the effects have played)
@@ -292,11 +304,12 @@ export class Weapon {
   begin(kind) {
     const P = this.player, G = this.game, M = MOVES[kind];
     this.glinted = false; this.plungeReq = 0; this.apexCue = false; this.gathered = false; this.bolted = false; this.quaked = false;
-    this.kind = kind; this.lastKind = kind; this.t = 0; this.swapped = (kind === 'parry' || kind === 'rise' || kind === 'storm' || kind === 'quake') && this.rig.drawn || kind === 'plunge' || kind === 'slamland'; this.queued = null;
+    this.galed = false; this.spun = false;
+    this.kind = kind; this.lastKind = kind; this.t = 0; this.swapped = (kind === 'parry' || kind === 'rise' || kind === 'storm' || kind === 'quake' || kind === 'gale') && this.rig.drawn || kind === 'plunge' || kind === 'slamland'; this.queued = null;
     this.waitingOn = false; this.waiting = 0; this.struck.clear(); this.lunged = false; this.swished = false; this.landed = false; this.prevS = 0;
     // face where the camera looks
     const b = G.rig.basis();
-    this.aim = Math.atan2(b.fx, b.fz);
+    this.aim = this.aim0 = Math.atan2(b.fx, b.fz);
     if (kind === 'draw') this.rig.trail.clear();
   }
 
@@ -383,13 +396,14 @@ export class Weapon {
     const P = this.player, G = this.game, input = G.input;
     if (this.freeze) { P.vel.set(0, 0, 0); this.moveScale = 0; this.faceLock = true; return; }
     if (inMenu) { if (this.kind) this.reset(); return; }
-    if (P.state === 'dive' || P.state === 'roll' || P.state === 'flop' || P.state === 'getup' || P.state === 'flash' || P.state === 'tackle' || P.state === 'rockkick') { if (this.kind) this.reset(); this.w = 0; return; }
+    if (P.state === 'dive' || P.state === 'roll' || P.state === 'flop' || P.state === 'getup' || P.state === 'flash' || P.state === 'tackle' || P.state === 'rockkick' || P.state === 'crow') { if (this.kind) this.reset(); this.w = 0; return; }
     if (G.bow?.equipped) { if (this.kind) this.reset(); this.w = 0; return; }
     this.parryCool = Math.max(0, this.parryCool - dt);
     if (input.attack()) this.press();
     if (input.parry()) this.parry();
     if (input.stormKey()) this.storm();
     if (input.earthKey()) this.earthCall();
+    if (input.windKey()) this.windCall();
     if (this.kind === 'rise' || this.kind === 'plunge') { this.airTick(dt); return; }
     // the legs take the sword stance only while he is not walking; blended, never switched
     this.legs = damp(this.legs, input.move().mag > 0.2 ? 0 : 1, 9, dt);
@@ -413,6 +427,12 @@ export class Weapon {
       if (this.t >= M.dur - 0.01) this.parryCool = PARRY_COOLDOWN;
     }
     if (this.kind === 'quake') this.moveScale = 0.1;
+    if (this.kind === 'gale') {
+      // one full turn on the spot, the blade leading
+      this.moveScale = 0.1;
+      this.aim = this.aim0 + Math.PI * 2 * smoothstep(GALE_SPIN[0], GALE_SPIN[1], this.t);
+      if (!this.spun && this.t >= GALE_SPIN[0] - 0.05) { this.spun = true; G.audio?.wind('spin'); }
+    }
     if (this.kind === 'storm') {
       this.moveScale = 0.1;
       if (!this.gathered && this.t >= STORM_GATHER) { this.gathered = true; G.audio?.storm('gather'); }
@@ -469,12 +489,14 @@ export class Weapon {
   after(dt) {
     const M = this.kind ? MOVES[this.kind] : null;
     const cutting = !!(M && M.hit && this.t >= M.hit[0] && this.t <= M.hit[1] + 0.04);
-    this.rig.trail.update(dt, this.rig, this.rig.drawn && (cutting || (M && M.hit && this.t > M.hit[0] - 0.08 && this.t < M.hit[1] + 0.1)));
+    const sweep = !!(M && M.trail && this.t >= M.trail[0] && this.t <= M.trail[1]);
+    this.rig.trail.update(dt, this.rig, this.rig.drawn && (cutting || sweep || (M && M.hit && this.t > M.hit[0] - 0.08 && this.t < M.hit[1] + 0.1)));
     this.cutSweep(dt, M);
     this.rig.updateGlint(dt, this.game.camera);
     this.rig.applyCharge(this.game.time);
     if (this.kind === 'storm' && !this.freeze && dt > 0) this.stormTick();
     if (this.kind === 'quake' && !this.freeze && dt > 0 && !this.quaked && this.t >= QUAKE_AT) { this.quaked = true; this.game.earth?.quake(this.rig.point(1, new THREE.Vector3()), this.player); }
+    if (this.kind === 'gale' && !this.freeze && dt > 0) this.galeTick();
     this.updateWaves(dt);
     if (M && M.hit && dt > 0 && !this.freeze) {
       const s = clamp((this.t - M.hit[0]) / (M.hit[1] - M.hit[0]), 0, 1);
@@ -495,6 +517,14 @@ export class Weapon {
       this.bolted = true;
       S.strike(this.rig.point(1, new THREE.Vector3()), this.player);
     }
+  }
+
+  // Wind Call: the whirl gathers through the turn; as the blade comes up it settles on him
+  galeTick() {
+    const W = this.game.gale;
+    if (!W) return;
+    if (this.t < GALE_AT) W.setGather(smoothstep(0.1, GALE_AT, this.t));
+    else if (!this.galed) { this.galed = true; W.call(this.rig.point(1, new THREE.Vector3()), this.player); }
   }
 
   // ---------------------------------------------------------------- hit scan

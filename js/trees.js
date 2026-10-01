@@ -224,8 +224,9 @@ export class Trees {
             group.add(m);
           }
           t.canopyY = V.canopyY * t.s; t.canopyR = V.canopyR * t.s; t.H = V.H * t.s;
-          if (kind !== 'bush') this.colliders.push({ x: t.x, z: t.z, r: (kind === 'pine' ? 0.28 : 0.3) * t.s * (V.H / 10) + 0.12 });
-          else this.colliders.push({ x: t.x, z: t.z, r: 0.35 * t.s });
+          // h: how high it stands, for what flies (the Wind Crow, which goes through bushes)
+          if (kind !== 'bush') this.colliders.push({ x: t.x, z: t.z, r: (kind === 'pine' ? 0.28 : 0.3) * t.s * (V.H / 10) + 0.12, h: t.H });
+          else this.colliders.push({ x: t.x, z: t.z, r: 0.35 * t.s, h: 1.4 * t.s, bush: true });
         });
       }
     }

@@ -196,6 +196,42 @@ export class Audio {
     } finally { this.bus = null; }
   }
 
+  // a crow's caw: a harsh nasal call, its pitch rasping and falling away, and a second one close behind
+  caw(t, gain) {
+    const ctx = this.ctx;
+    for (const [at, f0] of [[0, 640], [0.26, 590]]) {
+      const o = ctx.createOscillator(), lfo = ctx.createOscillator(), lg = ctx.createGain(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(f0, t + at); o.frequency.linearRampToValueAtTime(f0 * 1.08, t + at + 0.04); o.frequency.exponentialRampToValueAtTime(f0 * 0.62, t + at + 0.22);
+      lfo.frequency.value = 72; lg.gain.value = 45; lfo.connect(lg).connect(o.frequency);       // the rasp
+      f.type = 'bandpass'; f.frequency.value = 1350; f.Q.value = 2.2;
+      g.gain.setValueAtTime(0, t + at); g.gain.linearRampToValueAtTime(gain, t + at + 0.02); g.gain.setValueAtTime(gain, t + at + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, t + at + 0.24);
+      o.connect(f).connect(g).connect(this.bus || this.master);
+      o.start(t + at); lfo.start(t + at); o.stop(t + at + 0.26); lfo.stop(t + at + 0.26);
+      this.grain(t + at, 2200, 1.5, 0.18, gain * 0.35);
+    }
+  }
+  // the wind: the spin and the burst of the call, the crow coming, its wingbeats, the throw and the blast
+  wind(kind, k = 1) {
+    if (!this.ctx) return;
+    this.bus = this.swordBus;
+    try {
+      const t = this.ctx.currentTime + 0.005;
+      if (kind === 'spin') { this.sweep(t, 180, 900, 380, 1.2, 0.85, 0.3); this.grain(t + 0.1, 260, 0.7, 0.8, 0.25, 'lowpass'); }
+      else if (kind === 'call') { this.grain(t, 500, 0.5, 0.9, 0.55, 'lowpass'); this.sweep(t, 300, 2600, 700, 0.8, 0.75, 0.38); this.thump(t, 70, 0.4, 0.5); }
+      else if (kind === 'fade') this.sweep(t, 1400, 500, 200, 0.8, 0.7, 0.15);
+      else if (kind === 'summon') { this.sweep(t, 250, 1500, 900, 0.9, 0.65, 0.32); this.caw(t + 0.08, 0.07); }
+      else if (kind === 'grab') { this.thump(t, 90, 0.25, 0.55); this.sweep(t, 500, 2400, 700, 1.0, 0.45, 0.35); this.grain(t, 300, 0.6, 0.4, 0.3, 'lowpass'); }
+      else if (kind === 'caw') this.caw(t, 0.12);
+      else if (kind === 'flap') { this.grain(t, 380, 0.8, 0.14, 0.22 * k, 'lowpass'); this.thump(t, 60, 0.12, 0.18 * k); }
+      else if (kind === 'bump') { this.thump(t, 110, 0.15, 0.5); this.grain(t, 1600, 1.2, 0.12, 0.25); }
+      else if (kind === 'throw') { this.sweep(t, 600, 3200, 1100, 1.0, 0.32, 0.38); this.thump(t, 120, 0.1, 0.25); }
+      else if (kind === 'burst') {
+        this.thump(t, 55, 0.7, 0.9 * k); this.thump(t + 0.02, 110, 0.3, 0.5 * k);
+        this.grain(t, 500, 0.5, 1.1, 0.6 * k, 'lowpass'); this.sweep(t, 2400, 700, 220, 0.7, 0.9, 0.38 * k);
+      }
+    } finally { this.bus = null; }
+  }
+
   // the Sky Slam landing: the ground booms
   slam() {
     if (!this.ctx) return;
@@ -232,14 +268,15 @@ export class Audio {
 
   update(dt, game) {
     if (!this.ctx) return;
-    const P = game.player, g = game.wind.gust(P.pos.x, P.pos.z), sp = Math.hypot(P.vel.x, P.vel.z);
+    // the wind bed swells with his speed: in a flight (the Wind Crow) it is a roar and a whistle
+    const P = game.player, g = game.wind.gust(P.pos.x, P.pos.z), sp = Math.min(24, Math.hypot(P.vel.x, P.vel.z, (P.fly || 0) * P.vel.y));
     const t = this.ctx.currentTime;
     const menu = game.state !== 'play';
     const lvl = (0.05 + g * 0.05 + sp * 0.012) * (menu ? 0.6 : 1);
     this.windGain.gain.setTargetAtTime(lvl, t, 0.3);
     this.windLP.frequency.setTargetAtTime(300 + g * 160 + sp * 60, t, 0.3);
-    this.whistleGain.gain.setTargetAtTime(Math.max(0, g - 1.8) * 0.02, t, 0.5);
-    this.whistle.frequency.setTargetAtTime(700 + g * 180, t, 0.5);
+    this.whistleGain.gain.setTargetAtTime(Math.max(0, g - 1.8) * 0.02 + Math.max(0, sp - 12) * 0.004, t, 0.5);
+    this.whistle.frequency.setTargetAtTime(700 + g * 180 + Math.max(0, sp - 12) * 40, t, 0.5);
     // crickets on moonlit nights, only away from the snow
     if (game.sky.night && P.surface && P.surface.snow < 0.3) {
       this.cricketT -= dt;

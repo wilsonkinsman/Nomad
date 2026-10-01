@@ -130,7 +130,7 @@ class Trainee {
     let crit = false;
     if (this.state === 'stagger') { dmg *= 2; crit = true; }
     this.hp -= dmg; this.flash = 1;
-    if (kind === 'slam' && this.hp > 0) this.setState('stagger');          // the shockwave throws him off his feet
+    if ((kind === 'slam' || kind === 'gale') && this.hp > 0) this.setState('stagger');          // the shockwave (or the crow's blast) throws him off his feet
     const knock = fx && fx.knock ? fx.knock : 0.25;
     this.pos.x += dx / l * knock; this.pos.z += dz / l * knock;
     G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 2.1, this.pos.z), (crit ? 'CRIT ' : '') + dmg, crit || dmg >= 30 ? 'big' : '');

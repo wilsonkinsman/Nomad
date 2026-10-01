@@ -104,6 +104,8 @@ export class AtsuModel {
 
     // leg lengths for the animation's foot-planting maths
     this.leg = { L1: P('LeftUpLeg').distanceTo(P('LeftLeg')), L2: P('LeftLeg').distanceTo(P('LeftFoot')), ankle: P('LeftFoot').y, hip: P('Hips').y };
+    // how high his hands reach above his soles with the arms straight up: the Wind Crow carries him by them
+    this.reachUp = P('LeftArm').y + P('LeftArm').distanceTo(P('LeftForeArm')) + P('LeftForeArm').distanceTo(P('LeftHand')) + P('LeftHand').distanceTo(P('LeftHandMiddle1'));
     this.aimFrameReady = true;       // the bow's arm solve works on this skeleton
     this.activate();
     this.pivotScale = P('Hips').y / 0.97;

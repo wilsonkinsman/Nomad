@@ -3,16 +3,24 @@
 // node it grows from, which may sit on another path. What you have learned
 // is kept in the browser (localStorage). Open it from the menu or with K.
 const SAVE = 'nomad_skills';
-const GRANTED = 8;       // skill points in all, so far
+const GRANTED = 10;      // skill points in all, so far
 
 // each path is `cols` grid columns wide; a skill's `col` is its place inside its path (0.5: centred over two)
 export const PATHS = {
   strength: { name: 'Strength', cols: 1 },
   lightning: { name: 'Lightning', cols: 2 },
   earth: { name: 'Earth', cols: 2 },
+  wind: { name: 'Wind', cols: 1 },
 };
 
 const ICONS = {
+  // a blade held level inside a whirl of wind
+  wind: '<svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M8 26h28M36 26l5-1.5"/><path d="M12 18q12-9 25 0M38 34q-13 9-26 0" opacity=".85"/><path d="M6 12q7-5 15-3M42 40q-7 4-15 2" opacity=".6"/></g></svg>',
+  // a crow, wings spread, streaming wind, a figure hanging from its feet
+  crow: '<svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M4 14l9 1 6 4 5-1 5 1 6-4 9-1-7 6-6 2h-4l-3-1-3 1h-4l-6-2z"/><path d="M24 18l2-4 3 1"/><path d="M22 23v7M26 23v7"/>' +
+    '<circle cx="24" cy="34" r="2.4"/><path d="M24 36v6M21 46l3-4 3 4"/><path d="M2 24h6M40 24h6" opacity=".6"/></g></svg>',
   // a great arrow with a bolt along it
   thunderarrow: '<svg viewBox="0 0 48 48" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M6 42L40 8M40 8l-12 2M40 8l-2 12"/><path d="M12 30l6 2-2 4 6 1" opacity=".8"/><path d="M4 46l5-1M3 40l3-3" opacity=".6"/></g></svg>',
@@ -59,6 +67,11 @@ export const SKILLS = [
     desc: 'Press Q while Earth Power is on you. A wall of rock tears up out of the ground in front of you (one every second and a half): arrows shatter on it, nothing walks through it, and a dash into it ends with whoever dashed stunned on the ground.' },
   { id: 'rockkick', name: 'Rock Kick', path: 'earth', cost: 1, requires: 'earth', row: 1, col: 1, icon: ICONS.rockkick,
     desc: 'Press E while Earth Power is on you. Stomp, and a boulder bursts up out of the ground in a spray of stones; side-kick it and it flies low and very fast, flattening the field as it passes and shattering on whatever it hits, throwing it back hard.' },
+  // wind
+  { id: 'wind', name: 'Wind Call', path: 'wind', cost: 1, requires: null, row: 0, icon: ICONS.wind,
+    desc: 'Press V. Hold the blade out and turn once on the spot: the wind follows it round into a whirl and settles on you. For forty-five seconds you are light on your feet (you run faster and jump higher) and the crow will come when you call it. Ten seconds to recover after it fades.' },
+  { id: 'crow', name: 'Wind Crow', path: 'wind', cost: 1, requires: 'wind', row: 1, icon: ICONS.crow,
+    desc: 'Hold Z while the wind is with you. A great crow of wind swoops past you; you catch its feet and it drags you off the ground and carries you wherever you look (W faster, S slower), the view widening with the speed. Let go and you hurl it where you look: it bursts in a blast of wind that throws back everything near. The flight burns the wind.' },
 ];
 
 export class Skills {

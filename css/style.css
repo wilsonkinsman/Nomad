@@ -77,7 +77,7 @@ input[type=range] { accent-color: var(--gold); width: 150px; }
 .mbtn kbd { float: right; margin-top: 7px; font: 12px var(--sans); letter-spacing: 0.1em; color: var(--ink-dim); border: 1px solid rgba(244,237,225,0.3); padding: 1px 7px; }
 .menu-controls .dim { color: var(--ink-dim); }
 #skills { position: fixed; inset: 0; z-index: 25; display: grid; place-items: center; background: rgba(6,5,4,0.62); }
-.sk-card { width: min(1140px, 96vw); max-height: 88vh; overflow: auto; padding: 26px 30px 20px; background: rgba(18,16,14,0.94); border: 1px solid rgba(232,194,122,0.45); }
+.sk-card { width: min(1240px, 96vw); max-height: 88vh; overflow: auto; padding: 26px 30px 20px; background: rgba(18,16,14,0.94); border: 1px solid rgba(232,194,122,0.45); }
 .sk-head { display: flex; align-items: baseline; gap: 18px; }
 .sk-head h2 { margin: 0; font-family: var(--serif); font-weight: 500; font-size: 38px; letter-spacing: 0.2em; }
 #sk-points { color: var(--gold); font-family: var(--serif); font-style: italic; font-size: 19px; }
@@ -162,5 +162,18 @@ input[type=range] { accent-color: var(--gold); width: 150px; }
 #earth-fill { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #8a7a4a, #d6d39a); box-shadow: 0 0 6px #a4a060; }
 #earth.cool #earth-fill { background: #6b6550; box-shadow: none; }
 #callout.earth { color: #d2d49a; text-shadow: 0 0 22px #6e6a2a, 0 2px 0 #000; }
+/* the Wind path: a pale sea-green bar above the earth's, its callouts and its column in the skill tree */
+#wind { position: fixed; left: 28px; bottom: 68px; width: 200px; height: 4px; z-index: 11; pointer-events: none; background: rgba(0,0,0,0.4); border: 1px solid rgba(170,225,212,0.4); opacity: 0; transition: opacity 0.3s; }
+#wind.on { opacity: 0.95; }
+#wind-fill { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #6fb4a6, #e6fbf5); box-shadow: 0 0 6px #8fd3c3; }
+#wind.cool #wind-fill { background: #5b7a73; box-shadow: none; }
+#callout.wind { color: #dcf7f0; text-shadow: 0 0 24px #4f9e8f, 0 2px 0 #000; }
+.sk-path.wind { color: #a8dccf; }
+.sk-node.wind.ready, .sk-node.wind.learned { border-color: #a8dccf; }
+.sk-node.wind.learned { background: rgba(140,210,195,0.1); }
+.sk-node.wind.ready:hover, .sk-node.wind.ready:focus-visible { background: rgba(140,210,195,0.16); }
+.sk-node.wind .sk-icon { color: #a8dccf; border-color: rgba(168,220,207,0.55); }
+.sk-node.wind .sk-body em { color: #a8dccf; }
+.sk-node.locked.wind .sk-body em { color: var(--ink-dim); }
 #storm-fill { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #6aa0ff, #e4efff); box-shadow: 0 0 8px #6aa0ff; }
 #hp.low #hp-fill { background: #d9604a; }

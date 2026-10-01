@@ -100,6 +100,18 @@ export const MOVE_KEYS = {
     [1.2, { grip: R(1), sp: R(0, 0.1, 0.24), sa: R(0, 2.2, 0), spine: R(0.15), chest: R(0.15), hips: R(0.06), stance: [0.2, -0.22, 0.1] }],
     [1.55, READY],
   ],
+  // Wind Call: the blade comes out level to his right front and he winds up to the right; he turns once on the
+  // spot (sword.js turns him) with the blade held out leading, then sweeps it up overhead as the wind settles on
+  // him, holds it there a breath and brings it down to the ready pose
+  gale: [
+    [0.00, READY],
+    [0.20, { grip: R(1), sp: R(-0.06, -0.04, 0.24), sa: R(-0.9, 1.55, 0), spine: R(0.08, -0.25), chest: R(0.05, -0.35), hips: R(0.04, -0.2), neck: R(-0.1, 0.2), stance: [0.12, -0.2, 0.1] }],
+    [0.55, { grip: R(1), sp: R(-0.08, -0.02, 0.25), sa: R(-1.0, 1.5, 0), spine: R(0.1, -0.1), chest: R(0.06, -0.15), hips: R(0.05, 0), neck: R(-0.1, 0.1), stance: [0.14, -0.22, 0.12] }],
+    [0.90, { grip: R(1), sp: R(-0.08, 0.0, 0.25), sa: R(-1.1, 1.45, 0), spine: R(0.08, -0.05), chest: R(0.05, -0.1), hips: R(0.04, 0), neck: R(-0.08), stance: [0.14, -0.22, 0.12] }],
+    [1.02, { grip: R(1), sp: R(0, 0.3, 0.26), sa: R(0, 0.15, 0), spine: R(-0.15), chest: R(-0.25), hips: R(-0.03), neck: R(0.25), head: R(0.15), stance: [0.14, -0.26, 0.02] }],
+    [1.30, { grip: R(1), sp: R(0, 0.31, 0.26), sa: R(0, 0.12, 0), spine: R(-0.16), chest: R(-0.27), hips: R(-0.03), neck: R(0.26), head: R(0.16), stance: [0.14, -0.26, 0.02] }],
+    [1.75, READY],
+  ],
   // return the blade to the sheath over the left shoulder: both hands carry it out to his left and round
   // behind the shoulder (the sword's path, in the chest's frame, ends exactly where the arm-keyed pose
   // below begins), then the right hand lets go and the left slides the blade home

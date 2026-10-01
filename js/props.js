@@ -75,7 +75,7 @@ export class Props {
         m4.compose(new THREE.Vector3(sp.x, groundY(sp.x, sp.z) - sp.r * 0.12, sp.z), q, new THREE.Vector3(sp.r, sp.r, sp.r * (0.8 + rnd() * 0.4)));
         im.setMatrixAt(i, m4);
         im.setColorAt(i, c.setRGB(Math.min(1, sp.moss), sp.snow > 0.3 ? 1 : 0, 0));
-        if (sp.r > 0.5) this.colliders.push({ x: sp.x, z: sp.z, r: sp.r * 0.85 });
+        if (sp.r > 0.5) this.colliders.push({ x: sp.x, z: sp.z, r: sp.r * 0.85, h: sp.r * 1.1 });
       });
       im.castShadow = true; im.receiveShadow = true;
       game.scene.add(im);

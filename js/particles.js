@@ -17,6 +17,9 @@ const KINDS = {
   // what a cut sends flying: bigger, paler and slower to come down than the bits grass shakes loose
   clip:  { col: [0.62, 0.7, 0.26], size: 0.055, grow: 0.0, drag: 1.5, grav: -4.0, life: 1.9, a: 0.95 },
   chaff: { col: [0.86, 0.72, 0.38], size: 0.045, grow: 0.0, drag: 1.7, grav: -3.2, life: 2.1, a: 0.95 },
+  // the Wind path: pale wisps of air that swell as they go, and the crow's dark feathers drifting down
+  gust:  { col: [1.5, 1.62, 1.7], size: 0.16, grow: 1.4, drag: 1.8, grav: 0.2, life: 0.8, a: 0.26 },
+  feather: { col: [0.06, 0.07, 0.1], size: 0.05, grow: 0.0, drag: 3.2, grav: -1.4, life: 2.6, a: 0.95 },
 };
 
 export class Particles {

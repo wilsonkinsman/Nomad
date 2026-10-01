@@ -10,7 +10,8 @@ export class Input {
     this.enabled = false;
     this.walkToggle = false;
     this.mouseDown = false;          // the left button, held
-    this.pad = { x: 0, y: 0, lx: 0, ly: 0, sprint: false, active: false };
+    this.pad = { x: 0, y: 0, lx: 0, ly: 0, sprint: false, active: false, windHeld: false };
+    this.windOn = false;
     this._padPrev = [];
 
     addEventListener('keydown', (e) => {
@@ -42,7 +43,7 @@ export class Input {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const g = pads && [...pads].find(p => p && p.connected);
     const P = this.pad;
-    if (!g) { P.active = false; P.x = P.y = P.lx = P.ly = 0; P.sprint = false; return; }
+    if (!g) { P.active = false; P.x = P.y = P.lx = P.ly = 0; P.sprint = false; P.windHeld = false; return; }
     const dz = (v) => (Math.abs(v) < 0.15 ? 0 : (v - Math.sign(v) * 0.15) / 0.85);
     P.x = dz(g.axes[0] || 0); P.y = dz(g.axes[1] || 0);
     P.lx = dz(g.axes[2] || 0); P.ly = dz(g.axes[3] || 0);
@@ -50,6 +51,8 @@ export class Input {
     const edge = (i, name) => { if (b(i) && !this._padPrev[i]) this.pressed.add(name); };
     edge(0, 'Space'); edge(1, 'Dive'); edge(2, 'Dive'); if ((b(1) && !this._padPrev[1]) || (b(2) && !this._padPrev[2])) this.tapDive();
      edge(3, 'Attack'); edge(4, 'Parry'); edge(8, 'KeyB'); edge(6, 'Storm'); edge(11, 'Tackle'); edge(12, 'Earth'); edge(13, 'Wall'); edge(14, 'Kick'); edge(9, 'Escape');
+    // d-pad right: Wind Call, or (once the wind is with him) the Wind Crow, held
+    edge(15, 'Wind'); P.windHeld = b(15);
     if (b(10) && !this._padPrev[10]) P.sprintLatch = !P.sprintLatch;
     P.sprint = b(5) || b(7) || (P.sprintLatch && Math.hypot(P.x, P.y) > 0.5);
     if (Math.hypot(P.x, P.y) < 0.2) P.sprintLatch = false;
@@ -83,6 +86,11 @@ export class Input {
   kickKey() { return this.pressed.has('KeyE') || this.pressed.has('Kick'); }
   wallKey() { return this.pressed.has('KeyQ') || this.pressed.has('Wall'); }
   tackleKey() { return this.pressed.has('KeyT') || this.pressed.has('Tackle'); }
+  // V calls the wind; Z (held) is the Wind Crow. The pad has one button for both: it calls the crow once the
+  // wind is with him (windOn is kept by gale.js)
+  windKey() { return this.pressed.has('KeyV') || (this.pressed.has('Wind') && !this.windOn); }
+  crowKey() { return this.pressed.has('KeyZ') || (this.pressed.has('Wind') && this.windOn); }
+  crowHeld() { return this.keys.has('KeyZ') || this.pad.windHeld; }
   bowKey() { return this.pressed.has('KeyB'); }
   // the attack button held down (drawing the bow)
   attackHeld() { return this.mouseDown; }

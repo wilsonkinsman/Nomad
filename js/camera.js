@@ -1,5 +1,5 @@
 // Third-person camera: over-the-shoulder spring arm with lag, terrain avoidance, a slow pull-back
-// and wider lens while running,
+// and wider lens while running, a lens that widens with speed while the Wind Crow carries him,
 // plus a slow cinematic orbit for the title screen.
 import * as THREE from 'three';
 import { groundY } from './world.js';
@@ -41,15 +41,17 @@ export class CameraRig {
     const eye = player.model.camHeight ?? 1.48, hs1 = eye / 1.48;     // shorter characters: lower, closer camera
     const zoom = player.aimZoom || 0;
     const far = player.aimPull || 0;          // a Thunder Arrow being charged: the camera pulls far back
-    const arm = (this.dist + this.pull) * Math.sqrt(hs1) * (1 - 0.35 * zoom) * (1 + 1.9 * far);
+    // the Wind Crow: the arm lengthens to take in the bird, and more the faster it goes
+    const fly = player.fly || 0, spd = Math.hypot(player.vel.x, player.vel.y, player.vel.z);
+    const arm = (this.dist + this.pull) * Math.sqrt(hs1) * (1 - 0.35 * zoom) * (1 + 1.9 * far) * (1 + fly * (0.3 + 0.012 * spd));
 
     // focus trails the body a little: feels like a heavy camera operator
-    const target = new THREE.Vector3(player.pos.x, player.visualY + eye, player.pos.z);
+    const target = new THREE.Vector3(player.pos.x, player.visualY + eye + 0.6 * fly * hs1, player.pos.z);     // carried: between him and the bird
     if (this.focus.lengthSq() === 0) this.focus.copy(target);
-    const follow = (player.dashFov || 0) > 0.5 ? 16 : 9;           // the tackle's dash: keep up with him
+    const follow = (player.dashFov || 0) > 0.5 || fly > 0.3 ? 16 : 9;           // the tackle's dash, or a flight: keep up with him
     this.focus.x = damp(this.focus.x, target.x, follow, dt);
     this.focus.z = damp(this.focus.z, target.z, follow, dt);
-    this.focus.y = damp(this.focus.y, target.y, 5, dt);
+    this.focus.y = damp(this.focus.y, target.y, fly > 0.3 ? 12 : 5, dt);
 
     // gameplay arm
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
@@ -90,8 +92,10 @@ export class CameraRig {
       cam.position.x += Math.sin(t * 1.3) * s; cam.position.y += Math.sin(t * 1.7 + 1) * s;
     }
     cam.lookAt(this._look);
-    const fovT = inMenu ? 42 : 52 + 2 * run + 3 * sprint + (player.state === 'dive' ? 4 : 0) + (player.state === 'tackle' ? 4 : 0) + (player.dashFov || 0) + 10 * far - 26 * zoom;      // the bow zooms in
-    this.fov = damp(this.fov, fovT, zoom > 0.02 || far > 0.02 || this.fov < 50 || (player.dashFov || 0) > 0.5 ? 7 : 1.5, dt);
+    // in flight the lens widens with speed: about 9 degrees at a cruise, 20 flat out, 26 in the fastest dive
+    const flyFov = fly * clamp((spd - 5) * 0.85, 0, 26);
+    const fovT = inMenu ? 42 : 52 + 2 * run + 3 * sprint + (player.state === 'dive' ? 4 : 0) + (player.state === 'tackle' ? 4 : 0) + (player.dashFov || 0) + 10 * far - 26 * zoom + flyFov;      // the bow zooms in
+    this.fov = damp(this.fov, fovT, zoom > 0.02 || far > 0.02 || this.fov < 50 || (player.dashFov || 0) > 0.5 ? 7 : fly > 0.02 ? 4 : 1.5, dt);
     if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
   }
 
