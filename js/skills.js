@@ -1,21 +1,24 @@
-// The skill tree: a few nodes you can learn with skill points, grown along elemental paths (PATHS, one column
-// each). It is plain data (SKILLS), so adding a skill is adding an entry; `requires` draws a line from the
-// node it grows from, which may sit on another path. Open it from the menu or with K.
+// The skills, learned with skill points along elemental paths (PATHS). Each path is drawn as a tree of its own
+// that grows as its skills are learned, from a seed to a full tree (treeart.js): the path's first skill is the
+// seed, and each skill that grows from it (`requires`) is a bough. It is plain data (SKILLS), so adding a skill is
+// adding an entry. Pick a skill on a tree to see what it does, and learn it from there. Open it from the menu or
+// with K.
 //
 // Skill points are earned: each fairy found on the plain (fairies.js) and each quest finished (quests.js) is
 // worth one, through award(key). A key is earned once ('fairy:3', 'quest:oni'), so the ledger is also the record
 // of which fairies are found and which quests are done. Skills learned before points had to be earned are kept,
-// paid for by `legacy`. Admin mode (a switch at the foot of the tree) gives unlimited points for testing, and can
-// wipe all progress. All of it is kept in the browser (localStorage).
+// paid for by `legacy`. Admin mode (a switch at the top) gives unlimited points for testing, and can wipe all
+// progress. All of it is kept in the browser (localStorage).
+import { TreeArt } from './treeart.js';
+
 const SAVE = 'nomad_skills';
 const ADMIN_POINTS = 99;
 
-// each path is `cols` grid columns wide; a skill's `col` is its place inside its path (0.5: centred over two)
 export const PATHS = {
-  strength: { name: 'Strength', cols: 1 },
-  lightning: { name: 'Lightning', cols: 2 },
-  earth: { name: 'Earth', cols: 2 },
-  wind: { name: 'Wind', cols: 1 },
+  strength: { name: 'Strength' },
+  lightning: { name: 'Lightning' },
+  earth: { name: 'Earth' },
+  wind: { name: 'Wind' },
 };
 
 const ICONS = {
@@ -54,28 +57,28 @@ const ICONS = {
 };
 
 export const SKILLS = [
-  { id: 'skyslam', name: 'Sky Slam', path: 'strength', cost: 1, requires: null, row: 0, icon: ICONS.skyslam,
+  { id: 'skyslam', name: 'Sky Slam', path: 'strength', cost: 1, requires: null, icon: ICONS.skyslam,
     desc: 'Press jump again in the air to leap much higher. At the top, click to plunge: the landing is a shockwave that hurts everything around you and tears up the grass. With the wind on you, a whirlwind throws everyone near high into the air and slams them back down. Under Earth Power the landing raises a ring of stone round you and whoever is near for six seconds, too high to jump: only another Sky Slam gets you over it.' },
   // lightning: everything grows out of the charged blade
-  { id: 'storm', name: 'Storm Call', path: 'lightning', cost: 1, requires: null, row: 0, col: 0.5, icon: ICONS.storm,
+  { id: 'storm', name: 'Storm Call', path: 'lightning', cost: 1, requires: null, icon: ICONS.storm,
     desc: 'Press R. Hold the blade straight up and call down lightning onto it. For forty-five seconds the sword crackles: it hits harder, stuns what it hits and singes the leaves. Once it fades the sky needs ten seconds before it will answer again.' },
-  { id: 'flash', name: 'Flash Roll', path: 'lightning', cost: 1, requires: 'storm', row: 1, col: 0, icon: ICONS.flash,
+  { id: 'flash', name: 'Flash Roll', path: 'lightning', cost: 1, requires: 'storm', icon: ICONS.flash,
     desc: 'Tap the roll twice, fast (C or right-click). Instead of rolling you vanish in a flash of black lines and appear where the roll would have ended.' },
-  { id: 'tackle', name: 'Electrical Tackle', path: 'lightning', cost: 1, requires: 'storm', row: 1, col: 1, icon: ICONS.tackle,
+  { id: 'tackle', name: 'Electrical Tackle', path: 'lightning', cost: 1, requires: 'storm', icon: ICONS.tackle,
     desc: 'Press T while the storm is on your blade. He drops to all fours and a great cat of lightning forms around him, then the cat pounces: eight metres in a flash, straight at whatever is ahead, and rears up to rake it with both paws. The ground behind is burnt and whatever it catches is stunned.' },
-  { id: 'thunderarrow', name: 'Thunder Arrow', path: 'lightning', cost: 1, requires: 'storm', row: 2, col: 0.5, icon: ICONS.thunderarrow,
+  { id: 'thunderarrow', name: 'Thunder Arrow', path: 'lightning', cost: 1, requires: 'storm', icon: ICONS.thunderarrow,
     desc: 'With the storm on your blade, hold the bow past full draw. The camera pulls far back, you lean into it and the arrow takes the storm; release, and a great arrow of lightning tears a burnt trench sixty metres long through everything in its way. It spends the storm.' },
   // earth
-  { id: 'earth', name: 'Earth Power', path: 'earth', cost: 1, requires: null, row: 0, col: 0.5, icon: ICONS.earth,
+  { id: 'earth', name: 'Earth Power', path: 'earth', cost: 1, requires: null, icon: ICONS.earth,
     desc: 'Press G. Drive the blade into the ground and the earth answers: stones rise and circle you. For forty seconds you take half damage, your blows throw things back, and Sky Slam raises a ring of stone. Ten seconds to recover after it fades.' },
-  { id: 'wall', name: 'Earth Wall', path: 'earth', cost: 1, requires: 'earth', row: 1, col: 0, icon: ICONS.wall,
+  { id: 'wall', name: 'Earth Wall', path: 'earth', cost: 1, requires: 'earth', icon: ICONS.wall,
     desc: 'Press Q while Earth Power is on you. A wall of rock tears up out of the ground in front of you (one every second and a half): arrows shatter on it, nothing walks through it, and a dash into it ends with whoever dashed stunned on the ground.' },
-  { id: 'rockkick', name: 'Rock Kick', path: 'earth', cost: 1, requires: 'earth', row: 1, col: 1, icon: ICONS.rockkick,
+  { id: 'rockkick', name: 'Rock Kick', path: 'earth', cost: 1, requires: 'earth', icon: ICONS.rockkick,
     desc: 'Press E while Earth Power is on you. Stomp, and a boulder bursts up out of the ground in a spray of stones; side-kick it and it flies low and very fast, flattening the field as it passes and shattering on whatever it hits, throwing it back hard.' },
   // wind
-  { id: 'wind', name: 'Wind Call', path: 'wind', cost: 1, requires: null, row: 0, icon: ICONS.wind,
+  { id: 'wind', name: 'Wind Call', path: 'wind', cost: 1, requires: null, icon: ICONS.wind,
     desc: 'Press V. Hold the blade out and turn once on the spot: the wind follows it round into a whirl and settles on you. For forty-five seconds you are light on your feet (you run faster and jump higher) and the crow will come when you call it. Ten seconds to recover after it fades.' },
-  { id: 'crow', name: 'Wind Crow', path: 'wind', cost: 1, requires: 'wind', row: 1, icon: ICONS.crow,
+  { id: 'crow', name: 'Wind Crow', path: 'wind', cost: 1, requires: 'wind', icon: ICONS.crow,
     desc: 'Hold Z while the wind is with you. A great crow of wind swoops past you; you catch its feet and it drags you off the ground and carries you wherever you look (W faster, S slower), the view widening with the speed. Let go and you hurl it where you look: it bursts in a blast of wind that throws back everything near. The flight burns the wind.' },
 ];
 
@@ -153,67 +156,68 @@ export class Skills {
   reset() { this.learned.clear(); this.save(); this.render(); }
   save() { try { localStorage.setItem(SAVE, JSON.stringify({ v: 2, learned: [...this.learned], earned: [...this.earned], legacy: this.legacy, admin: this.admin })); } catch { /* ignore */ } }
 
-  open() { this.root.hidden = false; this.render(); }
+  // the forest is regrown from its seeds each time it is opened
+  open() {
+    this.root.hidden = false;
+    this.build();
+    for (const t of this.trees) t.update(new Set(), 0, true);
+    this.render(true);
+    requestAnimationFrame(() => { if (!this.root.hidden) for (const t of this.trees) t.update(this.learned, 900); });
+  }
   close() { this.root.hidden = true; }
   toggle() { this.isOpen ? this.close() : this.open(); }
 
-  render() {
+  // the trees, one for each path, and the panel that tells of the skill picked on one (made once)
+  build() {
+    if (this.trees) return;
+    this.tree.textContent = '';
+    const forest = document.createElement('div'); forest.className = 'sk-forest';
+    this.trees = Object.entries(PATHS).map(([id, p]) => {
+      // the seed: the path's skill that grows from nothing on it
+      const mine = SKILLS.filter((k) => k.path === id), root = mine.filter((k) => !k.requires || !mine.some((m) => m.id === k.requires));
+      const t = new TreeArt(id, p.name, [...root, ...mine.filter((k) => !root.includes(k))]);
+      for (const [sid, b] of Object.entries(t.nodes)) {
+        b.onclick = () => { this.sel = sid; this.render(); };
+        b.onmouseenter = () => this.show(sid);
+        b.onmouseleave = () => this.show(this.sel);
+        b.onfocus = () => { this.sel = sid; this.render(); };
+      }
+      forest.appendChild(t.el);
+      return t;
+    });
+    this.detail = document.createElement('div'); this.detail.id = 'sk-detail';
+    this.tree.append(forest, this.detail);
+  }
+
+  render(skipTrees = false) {
     this.info.textContent = this.admin ? 'Unlimited skill points (admin)' : this.points + (this.points === 1 ? ' skill point' : ' skill points');
     const T = this.totals;
     this.srcEl.textContent = `Fairies found ${this.count('fairy')} of ${T.fairy}  ·  Quests done ${this.count('quest')} of ${T.quest}` +
       (!this.admin && this.points === 0 && this.learned.size < SKILLS.length ? '  ·  find fairies across the plain, or finish quests, to earn more' : '');
     this.adminEl.setAttribute('aria-pressed', this.admin ? 'true' : 'false');
     this.wipeEl.hidden = !this.admin;
-    const paths = Object.entries(PATHS);
-    // two grid tracks per column, so a node can sit centred over two columns
-    let at = 0; for (const [, p] of paths) { p.at = at; at += p.cols; }
-    this.tree.style.gridTemplateColumns = `repeat(${at * 2}, minmax(0, 96px))`;
-    this.tree.textContent = '';
-    // a heading for each path, then its skills (row 0 is the heading)
-    for (const [id, p] of paths) {
-      const h = document.createElement('div');
-      h.className = 'sk-path ' + id; h.textContent = p.name; h.style.gridColumn = `${p.at * 2 + 1} / span ${p.cols * 2}`; h.style.gridRow = 1;
-      this.tree.appendChild(h);
+    if (!this.trees || this.root.hidden) return;
+    if (!skipTrees) for (const t of this.trees) t.update(this.learned);
+    // what is picked: kept while it stands, else the first skill that can be learned, else the first there is
+    if (!SKILLS.some((k) => k.id === this.sel)) this.sel = (SKILLS.find((k) => this.can(k)) || SKILLS[0]).id;
+    for (const t of this.trees) for (const [id, b] of Object.entries(t.nodes)) {
+      const sk = SKILLS.find((k) => k.id === id), state = this.state(sk);
+      b.className = 'tr-node ' + state + (id === this.sel ? ' sel' : '');
+      b.setAttribute('aria-label', `${sk.name}: ${state === 'ready' ? 'can be learned' : state}`);
     }
-    // a place held for what the Strength path will grow into
-    const soon = document.createElement('div');
-    soon.className = 'sk-node soon'; soon.textContent = 'More to come'; soon.style.gridColumn = `${PATHS.strength.at * 2 + 1} / span 2`; soon.style.gridRow = 3;
-    this.tree.appendChild(soon);
-    const nodes = {};
-    for (const sk of SKILLS) {
-      const state = this.has(sk.id) ? 'learned' : this.can(sk) ? 'ready' : 'locked';
-      const n = document.createElement('button');
-      nodes[sk.id] = n;
-      n.className = 'sk-node ' + sk.path + ' ' + state;
-      n.style.gridColumn = `${(PATHS[sk.path].at + (sk.col || 0)) * 2 + 1} / span 2`; n.style.gridRow = sk.row + 2;
-      n.disabled = state !== 'ready';
-      n.innerHTML = `<span class="sk-icon">${sk.icon}</span><span class="sk-body"><b>${sk.name}</b><i>${sk.desc}</i>` +
-        `<em>${state === 'learned' ? 'Learned' : state === 'ready' ? `Learn · ${sk.cost} point` : sk.requires && !this.has(sk.requires) ? 'Needs ' + SKILLS.find((k) => k.id === sk.requires).name : `Needs ${sk.cost} point`}</em></span>`;
-      n.onclick = () => this.learn(sk.id);
-      this.tree.appendChild(n);
-    }
-    this.links(nodes);
+    this.show(this.sel);
   }
+  state(sk) { return this.has(sk.id) ? 'learned' : this.can(sk) ? 'ready' : 'locked'; }
 
-  // a line from each skill up to the one it grows from, once the grid has been laid out (it may cross to another path)
-  links(nodes) {
-    const draw = () => {
-      const old = this.tree.querySelector('svg.sk-links'); if (old) old.remove();
-      if (this.root.hidden) return;
-      const ns = 'http://www.w3.org/2000/svg', svg = document.createElementNS(ns, 'svg');
-      svg.setAttribute('class', 'sk-links');
-      const T = this.tree.getBoundingClientRect();
-      for (const sk of SKILLS) {
-        if (!sk.requires) continue;
-        const a = nodes[sk.requires].getBoundingClientRect(), b = nodes[sk.id].getBoundingClientRect();
-        const x1 = a.left + a.width / 2 - T.left, y1 = a.bottom - T.top, x2 = b.left + b.width / 2 - T.left, y2 = b.top - T.top, ym = (y1 + y2) / 2;
-        const p = document.createElementNS(ns, 'path');
-        p.setAttribute('d', `M${x1} ${y1}V${ym}H${x2}V${y2}`);
-        p.setAttribute('class', this.has(sk.requires) ? 'on' : '');
-        svg.appendChild(p);
-      }
-      this.tree.appendChild(svg);
-    };
-    requestAnimationFrame(draw);
+  // the panel: the skill's name, its path, what it does, and a button to learn it
+  show(id) {
+    const sk = SKILLS.find((k) => k.id === id); if (!sk || !this.detail) return;
+    const state = this.state(sk), from = sk.requires && SKILLS.find((k) => k.id === sk.requires);
+    const D = this.detail, c = getComputedStyle(this.trees.find((t) => t.id === sk.path).el).getPropertyValue('--c');
+    D.style.setProperty('--c', c);
+    const label = state === 'learned' ? 'Learned' : state === 'ready' ? `Learn  ·  ${sk.cost} point` : from && !this.has(from.id) ? 'Needs ' + from.name : `Needs ${sk.cost} point`;
+    D.innerHTML = `<span class="sk-icon">${sk.icon}</span><div class="sk-body"><span class="sk-where">${PATHS[sk.path].name}${from ? '  ·  grows from ' + from.name : '  ·  the seed of the tree'}</span>` +
+      `<b>${sk.name}</b><i>${sk.desc}</i></div><button class="sk-learn${state === 'ready' ? ' go' : state === 'learned' ? ' done' : ''}"${state === 'ready' ? '' : ' disabled'}>${label}</button>`;
+    D.querySelector('.sk-learn').onclick = () => this.learn(sk.id);
   }
 }
