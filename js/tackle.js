@@ -16,6 +16,7 @@ import { groundY, PLAY_RADIUS } from './world.js';
 import { smoothstep, dampAngle } from './util.js';
 import { STUN } from './storm.js';
 import { CatCloak } from './catcloak.js';
+import { inside } from './collide.js';
 
 export const GATHER = 0.42, DASH = 0.16, CLAW = 0.5, RISE = 0.35;
 export const DOWN = GATHER, RUN = DASH, UP = GATHER + DASH + CLAW, TOTAL = UP + RISE;     // the names the animator reads
@@ -66,7 +67,7 @@ export class Tackle {
     // and stop on top of it
     let want = DIST, best = null, bd = LOCK;
     for (const c of this.game.enemies?.targets || []) {
-      if (c.dead) continue;
+      if (c.dead || c.lift > 1) continue;            // (thrown up out of reach by a Gale Slam)
       const dx = c.x - P.pos.x, dz = c.z - P.pos.z, d = Math.hypot(dx, dz);
       if (d < bd && d > 0.3 && (dx * this.dir.x + dz * this.dir.y) / d > 0.77) { bd = d; best = c; }
     }
@@ -80,7 +81,7 @@ export class Tackle {
     for (let s = 0.25; s <= want + 1e-6; s += 0.25) {
       const x = P.pos.x + this.dir.x * s, z = P.pos.z + this.dir.y * s;
       let hard = Math.hypot(x, z) > PLAY_RADIUS - 0.5;
-      for (const c of P.colliders) { if (c.soft) continue; const dx = x - c.x, dz = z - c.z, r = c.r + 0.34; if (dx * dx + dz * dz < r * r) { hard = true; if (c.wall) this.wall = c.wall; break; } }
+      for (const c of P.colliders) { if (c.soft) continue; if (inside(c, x, z, 0.34)) { hard = true; if (c.wall) this.wall = c.wall; break; } }
       if (hard) { this.blocked = true; break; }
       d = s;
     }
@@ -211,7 +212,7 @@ export class Tackle {
     // what is in front of the cat takes it
     let at = null;
     for (const c of G.enemies?.targets || []) {
-      if (c.dead) continue;
+      if (c.dead || c.lift > 1.6) continue;
       const ex = c.x - P.pos.x, ez = c.z - P.pos.z, d = Math.hypot(ex, ez);
       if (d > SWIPE_REACH + c.r || (ex * fx + ez * fz) / Math.max(d, 1e-3) < 0.2) continue;
       c.onHit?.('claw', SWIPE_DMG, ex, ez, { zap: true, stun: STUN, knock: 0.35 });
@@ -273,7 +274,7 @@ export class Tackle {
   strike(a, b) {
     const G = this.game, abx = b.x - a.x, abz = b.z - a.z, L2 = abx * abx + abz * abz || 1;
     for (const c of G.enemies?.targets || []) {
-      if (c.dead || this.hit.has(c)) continue;
+      if (c.dead || c.lift > 1 || this.hit.has(c)) continue;
       const u = Math.max(0, Math.min(1, ((c.x - a.x) * abx + (c.z - a.z) * abz) / L2));
       const qx = a.x + abx * u, qz = a.z + abz * u, ex = c.x - qx, ez = c.z - qz;
       if (Math.hypot(ex, ez) > c.r + REACH) continue;

@@ -1,14 +1,21 @@
 // Player controller: weighty acceleration, surface-dependent speed (deep snow drags, wheat
-// slows a little), stamina for sprinting and diving, jump with coyote time, and a dive that
-// rolls out on firm ground or belly-flops into snow. Emits events for footsteps and impacts.
+// slows a little), stamina for sprinting and diving, jump with coyote time, a dive that
+// rolls out on firm ground or belly-flops into snow, and a dodge: the dive key held back or to
+// one side hops him that way, still facing where the camera looks. Emits events for footsteps
+// and impacts.
 import * as THREE from 'three';
 import { groundY, surfaceAt, PLAY_RADIUS, SPAWN, SUN_AZ } from './world.js';
 import { Nomad } from './nomad.js';
 import { Animator } from './anim.js';
 import { Weapon } from './sword.js';
 import { clamp, damp, dampAngle, wrapAngle } from './util.js';
+import { SPEED_UP, JUMP_UP } from './gale.js';
+import { pushOut } from './collide.js';
 
 const GRAV = -13;
+// the dodge: how fast he springs away and how high, how long until he has his feet again, and for how much of it
+// a blow passes him by
+const DODGE_SPEED = 6.6, DODGE_HOP = 2.7, DODGE_TIME = 0.5, DODGE_SAFE = 0.38;
 
 export class Player {
   // model: a ready character (the Atsu GLB); without one, the procedural nomad is built
@@ -23,6 +30,8 @@ export class Player {
     this.vel = new THREE.Vector3();
     this.heading = Math.atan2(SUN_AZ.x, SUN_AZ.y);
     this.grounded = true; this.coyote = 0; this.boosted = false;
+    this.floating = false;     // carried (the Wind Crow): no gravity, no landing
+    this.fly = 0;              // how much of the flight's view the camera takes (set by crowflight.js)
     this.state = 'ground'; this.stateT = 0;
     this.stamina = 100; this.staminaDelay = 0; this.exhausted = false;
     this.sprinting = false;
@@ -66,16 +75,37 @@ export class Player {
 
   teleport(x, z) {
     this.pos.set(x, groundY(x, z), z); this.vel.set(0, 0, 0);
-    this.state = 'ground'; this.grounded = true;
+    this.state = 'ground'; this.grounded = true; this.floating = false;
     this.syncModel(0);
   }
 
   setState(s) { this.state = s; this.stateT = 0; }
 
+  // is the dive key, with the way the stick is held (as the camera sees it), asking for a dodge: back, or to one
+  // side? (Ahead, or nothing held, it is the dive.)
+  dodgeWanted(input) {
+    const m = input.move();
+    return m.mag > 0.3 && (m.y < -0.35 || (Math.abs(m.x) > 0.55 && m.y < 0.5));
+  }
+  // the dodge: a low quick hop along (dx, dz), turning to face where the camera looks as he goes. For the
+  // animation, which way that is in his own frame (x to his right, z ahead) is kept in dodgeL; the flash roll can
+  // go on from it as it does from a dive
+  dodge(dx, dz, deep, S) {
+    const b = this.game.rig.basis(), h = this.dodgeFace = Math.atan2(b.fx, b.fz);
+    this.dodgeL = { x: -dx * Math.cos(h) + dz * Math.sin(h), z: dx * Math.sin(h) + dz * Math.cos(h) };
+    const v = DODGE_SPEED * (1 - 0.3 * deep);
+    this.vel.set(dx * v, DODGE_HOP - 0.5 * deep, dz * v);
+    this.grounded = false; this.coyote = 0;
+    this.diveFrom = this.pos.clone(); this.diveDir = new THREE.Vector2(dx, dz); this.diveSpeed = v * 0.75; this.diveVy = this.vel.y;
+    this.setState('dodge');
+    this.emit('dodge', this.pos.clone(), S);
+  }
+
   // a blow lands on him. Returns 'dodged' if he was rolling or flashing through it, else 'hit'.
   hurt(amount, from) {
     const g = this.game;
     if (this.state === 'dive' || this.state === 'roll' || this.state === 'flash' || this.state === 'tackle' || this.invuln > 0) return 'dodged';
+    if (this.state === 'dodge' && this.stateT < DODGE_SAFE) return 'dodged';
     // the earth takes half of every blow while it is with him
     if (g.earth && g.earth.active) { amount = Math.ceil(amount / 2); for (let i = 0; i < 10; i++) g.particles.emit('dust', this.pos.x, this.pos.y + 1.1, this.pos.z, (Math.random() - 0.5) * 3, Math.random() * 2, (Math.random() - 0.5) * 3, 0.5, 1); }
     this.hp = Math.max(0, this.hp - amount); this.regenDelay = 5; this.invuln = 0.6;
@@ -107,7 +137,7 @@ export class Player {
 
     // ---------------------------------------------------------------- intent
     let mx = 0, mz = 0, mag = 0;
-    const busy = this.state === 'dive' || this.state === 'roll' || this.state === 'flop' || this.state === 'getup' || this.state === 'flash' || this.state === 'tackle' || this.state === 'rockkick';
+    const busy = this.state === 'dive' || this.state === 'roll' || this.state === 'flop' || this.state === 'getup' || this.state === 'flash' || this.state === 'tackle' || this.state === 'rockkick' || this.state === 'crow' || this.state === 'dodge';
     if (!inMenu && !busy) {
       const m = input.move(), b = g.rig.basis();
       mx = b.fx * m.y + b.rx * m.x; mz = b.fz * m.y + b.rz * m.x;
@@ -125,6 +155,7 @@ export class Player {
     speed *= 1 - 0.48 * deep;
     speed *= 1 - 0.1 * S.wheat * (1 - S.path);
     if (S.kind === 'puddle') speed *= 0.95;
+    if (g.gale?.active) speed *= SPEED_UP;        // the wind at his back
     this.sprinting = wantSprint && Math.hypot(this.vel.x, this.vel.z) > 4;
 
     // ---------------------------------------------------------------- stamina
@@ -143,6 +174,11 @@ export class Player {
       this.vel.z = damp(this.vel.z, tz, rate, dt);
     } else if (this.state === 'roll') {
       this.vel.x *= Math.exp(-1.6 * dt); this.vel.z *= Math.exp(-1.6 * dt);
+    } else if (this.state === 'dodge') {
+      // carried through the hop, then brought up short by the feet once they are down
+      const k = this.grounded ? 9 : 0.6;
+      this.vel.x *= Math.exp(-k * dt); this.vel.z *= Math.exp(-k * dt);
+      this.heading = dampAngle(this.heading, this.dodgeFace, 30, dt);
     } else if (this.state === 'flop') {
       this.vel.x *= Math.exp(-6 * dt); this.vel.z *= Math.exp(-6 * dt);
     } else if (this.state === 'getup') {
@@ -153,6 +189,8 @@ export class Player {
       g.tackle.drive(this, dt);
     } else if (this.state === 'rockkick') {
       g.earth.kickDrive(this, dt);
+    } else if (this.state === 'crow') {
+      g.crow.drive(this, dt);
     }
     const sp = Math.hypot(this.vel.x, this.vel.z);
     // heading follows travel direction, slower at speed (momentum)
@@ -166,7 +204,7 @@ export class Player {
     this._prevSpeed = sp;
 
     // ---------------------------------------------------------------- flash roll: the roll tapped twice
-    if (!inMenu && input.diveDouble() && (this.state === 'dive' || this.state === 'roll') && this.diveFrom) g.flash?.trigger(this);
+    if (!inMenu && input.diveDouble() && (this.state === 'dive' || this.state === 'roll' || this.state === 'dodge') && this.diveFrom) g.flash?.trigger(this);
 
     // ---------------------------------------------------------------- jump & dive
     this.coyote = this.grounded ? 0.12 : this.coyote - dt;
@@ -183,11 +221,16 @@ export class Player {
     if (!inMenu && this.state === 'ground' && input.wallKey()) g.earth?.raiseWall(this);
     // Rock Kick
     if (!inMenu && this.state === 'ground' && input.kickKey()) g.earth?.rockKick(this);
+    // Wind Crow: called on the ground or in the air
+    if (!inMenu && this.state === 'ground' && input.crowKey()) g.crow?.trigger(this);
     if (!inMenu && this.state === 'ground') {
       if (input.jump() && this.coyote > 0 && !(W && W.busy)) {
-        this.vel.y = 4.5 - 1.2 * deep;
+        this.vel.y = (4.5 - 1.2 * deep) * (g.gale?.active ? JUMP_UP : 1);
         this.grounded = false; this.coyote = 0;
         this.emit('jump', this.pos.clone(), S);
+      } else if (input.dive() && this.grounded && this.stamina >= 12 && this.dodgeWanted(input)) {
+        this.stamina -= 12; this.staminaDelay = 0.8;
+        this.dodge(mx, mz, deep, S);
       } else if (input.dive() && this.grounded && this.stamina >= 12) {
         this.stamina -= 16; this.staminaDelay = 0.8;
         const dir = new THREE.Vector2(Math.sin(this.heading), Math.cos(this.heading));
@@ -204,7 +247,7 @@ export class Player {
     // ---------------------------------------------------------------- vertical
     // at the top of a Sky Slam leap he hangs for a moment (less gravity), the window to click
     const hang = this.boosted && W && W.kind === 'rise' && Math.abs(this.vel.y) < 2.8 ? 0.4 : 1;
-    if (!this.grounded) this.vel.y += GRAV * dt * hang;
+    if (!this.grounded && !this.floating) this.vel.y += GRAV * dt * hang;
     this.pos.x += this.vel.x * dt;
     this.pos.z += this.vel.z * dt;
     this.pos.y += this.vel.y * dt;
@@ -214,7 +257,7 @@ export class Player {
       // stick to the ground when walking downhill
       if (this.pos.y - gy < 0.35) { this.pos.y = gy; this.vel.y = 0; }
       else { this.grounded = false; }
-    } else if (this.pos.y <= gy) {
+    } else if (this.pos.y <= gy && !this.floating) {
       const impact = -this.vel.y;
       this.pos.y = gy; this.vel.y = 0; this.grounded = true; this.boosted = false;
       if (this.state === 'dive') {
@@ -238,6 +281,7 @@ export class Player {
       this.emit('rollEnd', this.pos.clone(), this.heading, 1.5);
     }
     if (this.state === 'dive' && this.stateT > 2.5) this.setState('ground');
+    if (this.state === 'dodge' && ((this.grounded && this.stateT > DODGE_TIME) || this.stateT > 1.2)) this.setState('ground');
 
     this.visualY = this.pos.y;
     this.syncModel(dt);
@@ -245,10 +289,23 @@ export class Player {
 
   collide() {
     for (const c of this.colliders) {
-      if (c.soft && this.state === 'tackle') continue;        // he runs through what the storm can knock about
+      if (c.soft && (this.state === 'tackle' || this.state === 'crow')) continue;        // he runs (or is carried) through what can be knocked about
+      if (c.box) {
+        // a house: he is put back out through the nearer wall (unless he is up over its roof)
+        const o = pushOut(c, this.pos.x, this.pos.z, 0.28);
+        if (!o || this.pos.y > groundY(c.x, c.z) + c.h) continue;
+        this.pos.x += o.x; this.pos.z += o.z;
+        const vn = this.vel.x * o.nx + this.vel.z * o.nz;
+        if (vn < 0) { this.vel.x -= vn * o.nx; this.vel.z -= vn * o.nz; }
+        continue;
+      }
       const dx = this.pos.x - c.x, dz = this.pos.z - c.z, r = c.r + 0.28;
       const d2 = dx * dx + dz * dz;
       if (d2 < r * r && d2 > 1e-8) {
+        // an Earth Wall only holds him up to its top: a leap high enough (a Sky Slam) clears it
+        if (c.wall && this.pos.y > c.wall.top) continue;
+        // carried through a bush, or over anything else: trees, rocks and walls only stand so high (h, metres)
+        if (this.state === 'crow' && (c.bush || this.pos.y > (c.wall ? c.wall.top : groundY(c.x, c.z) + (c.h ?? 2.5)))) continue;
         const d = Math.sqrt(d2), push = (r - d) / d;
         this.pos.x += dx * push; this.pos.z += dz * push;
         // kill velocity into the obstacle
@@ -273,6 +330,7 @@ export class Player {
       snow: clamp(this.snowDepth / 0.35, 0, 1), wheat: this.surface ? this.surface.wheat * (1 - this.surface.path) : 0,
       landImpact: this.landImpact, rollTime: this.rollTime, getupTime: this.getupTime, style: m.animStyle || {},
       attack: this.weapon && this.weapon.rig === m.swordRig ? this.weapon.layer : null, aim: this.aimState || null,
+      crow: this.state === 'crow' ? this.game.crow?.pose : null,
     };
     const pose = this.anim.update(dt, P);
     this.landImpact = P.landImpact;
@@ -282,7 +340,8 @@ export class Player {
     // wind felt by the cloth: world wind plus the air we run through
     const w = this.game.wind ? this.game.wind.at(this.pos.x, this.pos.z) : new THREE.Vector3();
     this.wind.set(w.x - this.vel.x, w.y - this.vel.y * 0.5, w.z - this.vel.z);
-    const rolling = this.state === 'roll' || this.state === 'getup' || this.state === 'flop' || this.state === 'tackle';
+    if (this.wind.length() > 16) this.wind.setLength(16);         // a flight's gale would tear the cloth about
+    const rolling = this.state === 'roll' || this.state === 'getup' || this.state === 'flop' || this.state === 'tackle' || this.state === 'crow';
     const late = (this.state === 'roll' && this.stateT > this.rollTime * 0.6) || (this.state === 'getup' && this.stateT > this.getupTime * 0.5);
     this._settle = late ? 1 : rolling ? (this._settle || 0) : Math.max(0, (this._settle || 0) - dt * 1.6);
     m.update(dt, this.wind, rolling, this._settle);

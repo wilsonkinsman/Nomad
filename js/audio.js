@@ -83,6 +83,10 @@ export class Audio {
         this.grain(t, 1300, 0.9, 0.16, 0.3 * k); this.thump(t, 420, 0.09, 0.12 * k);
         for (let i = 0; i < 5; i++) this.grain(t + 0.03 + R() * 0.12, 2500 + R() * 2500, 4, 0.02, 0.08 * k);
         break;
+      case 'stone':                                   // cobbles: a hard, short knock and a scuff of grit
+        this.thump(t, 170, 0.04, 0.22 * k); this.grain(t, 2600, 1.4, 0.03, 0.14 * k);
+        for (let i = 0; i < 3; i++) this.grain(t + 0.01 + R() * 0.05, 4200 + R() * 2500, 3, 0.01, 0.07 * k);
+        break;
       case 'dirt':
         this.thump(t, 110, 0.07, 0.25 * k);
         for (let i = 0; i < 4; i++) this.grain(t + R() * 0.05, 1800 + R() * 1800, 2, 0.015, 0.12 * k);
@@ -91,6 +95,43 @@ export class Audio {
         this.thump(t, 95, 0.06, 0.18 * k);
         this.grain(t, 3200, 0.8, 0.1, 0.1 * k);
     }
+  }
+
+  // the smith's hammer on the anvil (k: how loud, by how near)
+  anvil(k = 1) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + 0.005;
+    this.grain(t, 3000, 1, 0.04, 0.16 * k); this.thump(t, 240, 0.05, 0.12 * k);
+    this.ping(t, 1650 + Math.random() * 40, 0.8, 0.06 * k); this.ping(t, 2490, 0.55, 0.035 * k); this.ping(t, 3920, 0.35, 0.02 * k);
+  }
+  // a door swinging open on old hinges
+  door() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime + 0.01, o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(140, t); o.frequency.linearRampToValueAtTime(230 + Math.random() * 60, t + 0.35); o.frequency.linearRampToValueAtTime(170, t + 0.6);
+    f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = 6;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.025, t + 0.08); g.gain.linearRampToValueAtTime(0.018, t + 0.45); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+    o.connect(f).connect(g).connect(this.master); o.start(t); o.stop(t + 0.75);
+    this.thump(t + 0.02, 120, 0.06, 0.05);
+  }
+  // the chapel bell: three slow strokes, k loud
+  bell(k = 1) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + 0.05;
+    for (let i = 0; i < 3; i++) {
+      const s = t + i * 2.2;
+      this.ping(s, 392, 4.5, 0.09 * k); this.ping(s, 784 * 1.002, 3.2, 0.05 * k); this.ping(s, 940, 2.4, 0.035 * k); this.ping(s, 1176, 1.8, 0.03 * k); this.ping(s, 196, 5, 0.05 * k);
+      this.thump(s, 300, 0.05, 0.05 * k);
+    }
+  }
+  // the cat, put out
+  meow() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime + 0.01, o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(520, t); o.frequency.linearRampToValueAtTime(820, t + 0.12); o.frequency.exponentialRampToValueAtTime(430, t + 0.45);
+    f.type = 'bandpass'; f.frequency.setValueAtTime(900, t); f.frequency.linearRampToValueAtTime(1800, t + 0.15); f.frequency.linearRampToValueAtTime(700, t + 0.45); f.Q.value = 3;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.06, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    o.connect(f).connect(g).connect(this.master); o.start(t); o.stop(t + 0.55);
   }
 
   // a band of noise whose pitch rises then falls: swishes, steel sliding on steel
@@ -206,6 +247,97 @@ export class Audio {
     } finally { this.bus = null; }
   }
 
+  // a crow's caw: a harsh nasal call, its pitch rasping and falling away, and a second one close behind
+  caw(t, gain) {
+    const ctx = this.ctx;
+    for (const [at, f0] of [[0, 640], [0.26, 590]]) {
+      const o = ctx.createOscillator(), lfo = ctx.createOscillator(), lg = ctx.createGain(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(f0, t + at); o.frequency.linearRampToValueAtTime(f0 * 1.08, t + at + 0.04); o.frequency.exponentialRampToValueAtTime(f0 * 0.62, t + at + 0.22);
+      lfo.frequency.value = 72; lg.gain.value = 45; lfo.connect(lg).connect(o.frequency);       // the rasp
+      f.type = 'bandpass'; f.frequency.value = 1350; f.Q.value = 2.2;
+      g.gain.setValueAtTime(0, t + at); g.gain.linearRampToValueAtTime(gain, t + at + 0.02); g.gain.setValueAtTime(gain, t + at + 0.12); g.gain.exponentialRampToValueAtTime(0.0001, t + at + 0.24);
+      o.connect(f).connect(g).connect(this.bus || this.master);
+      o.start(t + at); lfo.start(t + at); o.stop(t + at + 0.26); lfo.stop(t + at + 0.26);
+      this.grain(t + at, 2200, 1.5, 0.18, gain * 0.35);
+    }
+  }
+  // the wind: the spin and the burst of the call, the crow coming, its wingbeats, the throw and the blast
+  wind(kind, k = 1) {
+    if (!this.ctx) return;
+    this.bus = this.swordBus;
+    try {
+      const t = this.ctx.currentTime + 0.005;
+      if (kind === 'spin') { this.sweep(t, 180, 900, 380, 1.2, 0.85, 0.3); this.grain(t + 0.1, 260, 0.7, 0.8, 0.25, 'lowpass'); }
+      else if (kind === 'call') { this.grain(t, 500, 0.5, 0.9, 0.55, 'lowpass'); this.sweep(t, 300, 2600, 700, 0.8, 0.75, 0.38); this.thump(t, 70, 0.4, 0.5); }
+      else if (kind === 'fade') this.sweep(t, 1400, 500, 200, 0.8, 0.7, 0.15);
+      else if (kind === 'summon') { this.sweep(t, 250, 1500, 900, 0.9, 0.65, 0.32); this.caw(t + 0.08, 0.07); }
+      else if (kind === 'grab') { this.thump(t, 90, 0.25, 0.55); this.sweep(t, 500, 2400, 700, 1.0, 0.45, 0.35); this.grain(t, 300, 0.6, 0.4, 0.3, 'lowpass'); }
+      else if (kind === 'caw') this.caw(t, 0.12);
+      else if (kind === 'flap') { this.grain(t, 380, 0.8, 0.14, 0.22 * k, 'lowpass'); this.thump(t, 60, 0.12, 0.18 * k); }
+      else if (kind === 'bump') { this.thump(t, 110, 0.15, 0.5); this.grain(t, 1600, 1.2, 0.12, 0.25); }
+      else if (kind === 'throw') { this.sweep(t, 600, 3200, 1100, 1.0, 0.32, 0.38); this.thump(t, 120, 0.1, 0.25); }
+      else if (kind === 'lift') { this.sweep(t, 180, 1300, 2400, 0.9, 0.7, 0.4); this.grain(t, 400, 0.6, 0.7, 0.35, 'lowpass'); }
+      else if (kind === 'drop') { this.thump(t, 58, 0.45, 0.8 * k); this.thump(t, 115, 0.2, 0.4 * k); this.grain(t, 450, 0.6, 0.45, 0.45 * k, 'lowpass'); this.sweep(t, 2200, 700, 250, 0.8, 0.25, 0.25 * k); }
+      else if (kind === 'burst') {
+        this.thump(t, 55, 0.7, 0.9 * k); this.thump(t + 0.02, 110, 0.3, 0.5 * k);
+        this.grain(t, 500, 0.5, 1.1, 0.6 * k, 'lowpass'); this.sweep(t, 2400, 700, 220, 0.7, 0.9, 0.38 * k);
+      }
+    } finally { this.bus = null; }
+  }
+
+  // a fairy: a soft twinkle when you come near (k: how near), a rising shimmer of bells when she is found
+  fairy(kind, k = 1) {
+    if (!this.ctx) return;
+    this.bus = this.swordBus;
+    try {
+      const t = this.ctx.currentTime + 0.005, notes = [1568, 1760, 2093, 2349, 2637, 3136];
+      if (kind === 'near') for (let i = 0; i < 3; i++) this.ping(t + i * 0.09 + Math.random() * 0.03, notes[(Math.random() * notes.length) | 0], 0.6, 0.025 + 0.05 * k);
+      else {
+        [1047, 1319, 1568, 2093, 2637, 3136].forEach((f, i) => this.ping(t + i * 0.07, f, 1.1, 0.09));
+        this.sweep(t, 2000, 7000, 9000, 2, 0.8, 0.08);
+      }
+    } finally { this.bus = null; }
+  }
+  // a growl: a low sawtooth, rasped and filtered, with a breath of noise over it
+  growl(t, f0, f1, dur, gain) {
+    const ctx = this.ctx, o = ctx.createOscillator(), lfo = ctx.createOscillator(), lg = ctx.createGain(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(f0, t); o.frequency.linearRampToValueAtTime(f1, t + dur);
+    lfo.frequency.value = 31; lg.gain.value = f0 * 0.18; lfo.connect(lg).connect(o.frequency);
+    f.type = 'lowpass'; f.frequency.setValueAtTime(700, t); f.frequency.linearRampToValueAtTime(420, t + dur); f.Q.value = 3;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(gain, t + dur * 0.15); g.gain.setValueAtTime(gain, t + dur * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(f).connect(g).connect(this.bus || this.master);
+    o.start(t); lfo.start(t); o.stop(t + dur + 0.05); lfo.stop(t + dur + 0.05);
+    this.grain(t, 500, 0.6, dur, gain * 0.5, 'lowpass');
+  }
+  // the oni: his roar, his tread, the club raised and swung and brought down, his leap and landing, his pain
+  oni(kind) {
+    if (!this.ctx) return;
+    this.bus = this.swordBus;
+    try {
+      const t = this.ctx.currentTime + 0.005;
+      if (kind === 'roar') { this.growl(t, 92, 70, 1.5, 0.55); this.growl(t + 0.05, 140, 100, 1.3, 0.25); }
+      else if (kind === 'hurt') this.growl(t, 120, 95, 0.3, 0.3);
+      else if (kind === 'die') { this.growl(t, 110, 45, 2.4, 0.5); this.thump(t + 1.5, 50, 0.6, 0.8); }
+      else if (kind === 'summon') { for (let i = 0; i < 3; i++) this.thump(t + i * 0.42, 55, 0.5, 0.7 - i * 0.15); this.growl(t + 1.4, 70, 95, 1.8, 0.35); this.ping(t, 220, 2.5, 0.06); }
+      else if (kind === 'step') { this.thump(t, 48, 0.25, 0.45); this.grain(t, 300, 0.7, 0.15, 0.15, 'lowpass'); }
+      else if (kind === 'raise') this.sweep(t, 150, 420, 260, 1.5, 0.5, 0.2);
+      else if (kind === 'swing') { this.sweep(t, 300, 1100, 300, 0.9, 0.35, 0.45); }
+      else if (kind === 'smash') { this.thump(t, 45, 0.7, 1.0); this.thump(t, 90, 0.3, 0.6); this.grain(t, 400, 0.6, 0.6, 0.6, 'lowpass'); this.grain(t, 1500, 1, 0.12, 0.3); }
+      else if (kind === 'leap') { this.sweep(t, 200, 900, 300, 1, 0.8, 0.35); this.growl(t, 110, 130, 0.5, 0.3); }
+      else if (kind === 'land') { this.thump(t, 38, 0.9, 1.1); this.thump(t, 80, 0.4, 0.7); this.grain(t, 350, 0.6, 0.9, 0.7, 'lowpass'); }
+    } finally { this.bus = null; }
+  }
+  // a quest given (two notes up) and finished (a short rising phrase)
+  quest(kind) {
+    if (!this.ctx) return;
+    this.bus = this.swordBus;
+    try {
+      const t = this.ctx.currentTime + 0.005;
+      if (kind === 'new') { this.ping(t, 784, 0.8, 0.12); this.ping(t + 0.16, 1175, 1.0, 0.12); }
+      else [523, 659, 784, 1047, 1319].forEach((f, i) => { this.ping(t + i * 0.11, f, 1.2, 0.12); this.ping(t + i * 0.11, f * 2, 0.6, 0.04); });
+    } finally { this.bus = null; }
+  }
+
   // the Sky Slam landing: the ground booms
   slam() {
     if (!this.ctx) return;
@@ -255,7 +387,8 @@ export class Audio {
 
   update(dt, game) {
     if (!this.ctx) return;
-    const P = game.player, g = game.wind.gust(P.pos.x, P.pos.z), sp = Math.hypot(P.vel.x, P.vel.z);
+    // the wind bed swells with his speed: in a flight (the Wind Crow) it is a roar and a whistle
+    const P = game.player, g = game.wind.gust(P.pos.x, P.pos.z), sp = Math.min(24, Math.hypot(P.vel.x, P.vel.z, (P.fly || 0) * P.vel.y));
     const t = this.ctx.currentTime;
     const menu = game.state !== 'play';
     // the deep wood: the wind is heard as the canopy high above, a shush that swells with the gusts, not at ground level
@@ -269,8 +402,8 @@ export class Audio {
       if (this.birdT <= 0) { this.birdT = 3 + Math.random() * 8; this.chirp(); }
     }
     this.windLP.frequency.setTargetAtTime(300 + g * 160 + sp * 60, t, 0.3);
-    this.whistleGain.gain.setTargetAtTime(Math.max(0, g - 1.8) * 0.02, t, 0.5);
-    this.whistle.frequency.setTargetAtTime(700 + g * 180, t, 0.5);
+    this.whistleGain.gain.setTargetAtTime(Math.max(0, g - 1.8) * 0.02 + Math.max(0, sp - 12) * 0.004, t, 0.5);
+    this.whistle.frequency.setTargetAtTime(700 + g * 180 + Math.max(0, sp - 12) * 40, t, 0.5);
     // crickets on moonlit nights, only away from the snow
     if (game.sky.night && P.surface && P.surface.snow < 0.3) {
       this.cricketT -= dt;

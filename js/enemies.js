@@ -6,6 +6,8 @@
 //     through it dodges it.
 // Both are targets for the sword, the bow and the slam: anything in `targets` has {x, z, r, onHit(kind, dmg, dx, dz, fx)}.
 // `fx` is set by a storm-charged blow ({ zap, stun }): the dummy shivers with it, the enemy is stunned stock-still.
+// A Gale Slam (updraft.js) throws them up into the air: a target's `lift` is how high it is, `spin` and `tilt` how it
+// turns, and `air` is set while it is up (the enemy does nothing else until it lands).
 import * as THREE from 'three';
 import { groundY } from './world.js';
 import { clamp, damp, dampAngle } from './util.js';
@@ -36,7 +38,7 @@ class Dummy {
     this.rx = 0; this.rz = 0; this.vx = 0; this.vz = 0;
     this.total = 0; this.last = 0; this.hits = 0; this.t0 = 0;
     this.sign = this.buildSign(x, z);
-    this.target = { x, z, r: 0.5, y0: 0, y1: 2.0, dummy: this, onHit: (k, dmg, dx, dz, fx) => this.hit(dmg, dx, dz, k, fx) };
+    this.target = { x, z, r: 0.5, y0: 0, y1: 2.0, lift: 0, spin: 0, tilt: 0, dummy: this, onHit: (k, dmg, dx, dz, fx) => this.hit(dmg, dx, dz, k, fx) };
     this.collider = { x, z, r: 0.42, soft: true };
   }
   buildSign(x, z) {
@@ -67,7 +69,7 @@ class Dummy {
     this.total += dmg; this.hits++; this.last = dmg;
     const hard = fx && fx.knock ? 3 : 1;
     this.vx += dz / l * 2.2 * hard; this.vz += -dx / l * 2.2 * hard;        // rocks away from the blow
-    G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 2.0, this.pos.z), String(dmg), fx && fx.zap ? 'zap big' : dmg >= 30 ? 'big' : '');
+    G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + this.target.lift + 2.0, this.pos.z), String(dmg), fx && fx.zap ? 'zap big' : dmg >= 30 ? 'big' : '');
     this.drawSign();
     this.flash = 1;
     if (fx && fx.zap) this.zapT = 1;
@@ -78,6 +80,9 @@ class Dummy {
     this.vx += (-this.rx * 60 - this.vx * 5) * dt; this.vz += (-this.rz * 60 - this.vz * 5) * dt;
     this.rx += this.vx * dt; this.rz += this.vz * dt;
     this.tilt.rotation.set(this.rx, 0, this.rz);
+    // thrown up by a Gale Slam: the whole of it, base and all, turning in the wind
+    const c = this.target;
+    this.group.position.y = this.pos.y + c.lift; this.group.rotation.set(c.tilt, c.spin, 0);
     if (this.zapT > 0) {                     // a charged blow: it shivers blue and sparks
       this.zapT = Math.max(0, this.zapT - dt * 0.8);
       const k = this.zapT * (0.5 + 0.5 * Math.sin(this.game.time * 50)), G = this.game;
@@ -118,7 +123,7 @@ class Trainee {
     this.sword = mesh(new THREE.BoxGeometry(0.06, 0.06, 1.0), this.bladeM, 0, -0.52, 0.45);
     this.armR.add(this.sword); this.armR.add(mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.2, 6).rotateX(Math.PI / 2), wood, 0, -0.52, 0));
     game.scene.add(this.group);
-    this.target = { x, z, r: 0.5, y0: 0, y1: 1.9, enemy: this, get dead() { return this.enemy.state === 'dead'; }, onHit: (k, dmg, dx, dz, fx) => this.hurt(dmg, dx, dz, k, fx) };
+    this.target = { x, z, r: 0.5, y0: 0, y1: 1.9, lift: 0, spin: 0, tilt: 0, enemy: this, get dead() { return this.enemy.state === 'dead'; }, onHit: (k, dmg, dx, dz, fx) => this.hurt(dmg, dx, dz, k, fx) };
     this.collider = { x, z, r: 0.4, soft: true };
     this.setState('idle');
   }
@@ -130,11 +135,12 @@ class Trainee {
     let crit = false;
     if (this.state === 'stagger') { dmg *= 2; crit = true; }
     this.hp -= dmg; this.flash = 1;
-    if (kind === 'slam' && this.hp > 0) this.setState('stagger');          // the shockwave throws him off his feet
+    if ((kind === 'slam' || kind === 'gale') && this.hp > 0) this.setState('stagger');          // the shockwave (or the crow's blast) throws him off his feet
     const knock = fx && fx.knock ? fx.knock : 0.25;
     this.pos.x += dx / l * knock; this.pos.z += dz / l * knock;
-    G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 2.1, this.pos.z), (crit ? 'CRIT ' : '') + dmg, crit || dmg >= 30 ? 'big' : '');
-    if (this.hp <= 0) { this.setState('dead'); G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 2.4, this.pos.z), 'DEFEATED', 'gold word'); }
+    const top = this.pos.y + this.target.lift;
+    G.hud?.floatText(new THREE.Vector3(this.pos.x, top + 2.1, this.pos.z), (crit ? 'CRIT ' : '') + dmg, crit || dmg >= 30 ? 'big' : '');
+    if (this.hp <= 0) { this.setState('dead'); G.hud?.floatText(new THREE.Vector3(this.pos.x, top + 2.4, this.pos.z), 'DEFEATED', 'gold word'); }
     else if (this.state === 'windup' && kind !== 'arrow' && dmg >= 25) this.setState('stagger');      // a heavy blow breaks its wind-up
     if (fx && fx.stun && this.hp > 0) this.stun(fx.stun);
     return true;
@@ -151,7 +157,21 @@ class Trainee {
     G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 2.2, this.pos.z), 'STAGGERED', 'gold word');
   }
 
+  // thrown up by a Gale Slam: arms and legs flung out, turning, he does nothing until he lands (and is staggered)
+  airborne(dt, G) {
+    const c = this.target;
+    this.collider.x = 1e4;          // nothing to walk into under him
+    this.group.position.set(this.pos.x, this.pos.y + c.lift, this.pos.z);
+    this.group.rotation.set(0, this.heading + c.spin, 0);
+    this.body.rotation.set(-0.35 + c.tilt, 0, 0.3 * Math.sin(G.time * 9)); this.body.position.y = 0;
+    this.torso.rotation.x = -0.4;
+    this.armR.rotation.set(-2.4 + 0.3 * Math.sin(G.time * 13), 0, -0.7); this.armL.rotation.set(-2.2 + 0.3 * Math.sin(G.time * 11 + 1), 0, 0.7);
+    if (this.flash > 0) { this.flash = Math.max(0, this.flash - dt * 5); for (const m of this.mats) m.emissive.setScalar(this.flash * 0.4); }
+  }
+
   update(dt, G) {
+    if (this.target.air) { this.airborne(dt, G); return; }
+    this.body.rotation.z = 0;
     const P = G.player, dx = P.pos.x - this.pos.x, dz = P.pos.z - this.pos.z, dist = Math.hypot(dx, dz);
     this.t += dt; this.cool -= dt;
     const face = (rate = 9) => { this.heading = dampAngle(this.heading, Math.atan2(dx, dz), rate, dt); };

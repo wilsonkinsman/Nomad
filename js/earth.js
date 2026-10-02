@@ -10,13 +10,16 @@
 //     away. It flies low and hard, ploughing the grass where it skims, and shatters on the first thing it meets:
 //     an enemy takes KICK_DMG and is thrown back, a wall, a tree or the ground breaks it to gravel.
 //   The cage: Sky Slam under Earth Power raises a ring of walls round the landing, wide enough to take in whoever
-//     is near, for CAGE seconds.
+//     is near, for CAGE seconds. The walls stand too high to jump (2.6 m), but not too high to clear with a Sky Slam:
+//     getting out over the top is hard, not impossible.
 // Walls stand in the world as rows of circles (Wall.circles), the same shape as tree and rock colliders, so the
-// player, the dashes and the practice enemy all stop at them.
+// player, the dashes and the practice enemy all stop at them; only up to their tops (Wall.top), so what goes over
+// them is not held back.
 import * as THREE from 'three';
 import { groundY } from './world.js';
 import { clamp, smoothstep } from './util.js';
 import { mergeVertices } from '../lib/utils/BufferGeometryUtils.js';
+import { struck } from './collide.js';
 
 export const DURATION = 40, COOLDOWN = 10, CAGE = 6, WALL_LIFE = 10, WALL_COOL = 1.5;
 export const KICK_TIME = 1.05;                       // the whole Rock Kick, stomp to standing
@@ -377,7 +380,7 @@ export class Earth {
         if (Math.random() < 0.4) G.leaves.kick?.(p.x, p.z, r.r + 0.8, 1.2, r.vel.x * 0.3, r.vel.z * 0.3);
         for (const c of G.enemies?.targets || []) {
           if (c.dead) continue;
-          const cy = groundY(c.x, c.z), dx = c.x - p.x, dz = c.z - p.z;
+          const cy = groundY(c.x, c.z) + (c.lift || 0), dx = c.x - p.x, dz = c.z - p.z;
           if (Math.hypot(dx, dz) < c.r + r.r && p.y > cy - 0.2 && p.y < cy + (c.y1 || 1.9)) {
             c.onHit?.('rock', KICK_DMG, r.vel.x, r.vel.z, { knock: KICK_KNOCK });
             G.hitStop = Math.max(G.hitStop, 0.12); G.audio?.sword('hit'); G.rig.shake = 1;
@@ -387,6 +390,7 @@ export class Earth {
         if (done) break;
         const w = this.blockArrow(p);
         if (w) { w.jolt(p.x, p.y, p.z); this.shatter(r, p.x, p.y, p.z); done = true; break; }
+        for (const c of G.village?.colliders || []) if (!done && struck(c, p.x, p.y, p.z, r.r)) { this.shatter(r, p.x, p.y, p.z); done = true; }
         for (const L of [G.trees?.colliders, G.props?.colliders]) if (L && !done) for (const c of L) {
           const dx = p.x - c.x, dz = p.z - c.z, rr = c.r + r.r;
           if (dx * dx + dz * dz < rr * rr && p.y < gy + 3) { this.shatter(r, p.x, p.y, p.z); done = true; break; }

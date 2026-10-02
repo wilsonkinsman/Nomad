@@ -1,9 +1,11 @@
 // Third-person camera: over-the-shoulder spring arm with lag, terrain avoidance, a slow pull-back
-// and wider lens while running,
-// plus a slow cinematic orbit for the title screen.
+// and wider lens while running, a lens that widens with speed while the Wind Crow carries him,
+// plus a slow cinematic orbit for the title screen. Walls (the village's houses, in `blockers`) bring the lens in
+// in front of them, so he is never seen through one.
 import * as THREE from 'three';
 import { groundY } from './world.js';
 import { clamp, damp, smoothstep } from './util.js';
+import { enters } from './collide.js';
 
 export class CameraRig {
   constructor(camera) {
@@ -20,6 +22,10 @@ export class CameraRig {
     this.blend = 0;           // 0 = menu orbit, 1 = gameplay
     this._pos = new THREE.Vector3();
     this._look = new THREE.Vector3();
+    this.blockers = [];       // boxes the lens may not pass behind
+    this.ceiling = null;      // (x, z) => how high the ceiling is over him indoors, or null outdoors
+    this.indoor = 0;
+    this.reach = 1;           // how much of the arm is clear of them (eases back out, snaps in)
   }
 
   update(dt, player, input, inMenu) {
@@ -43,15 +49,20 @@ export class CameraRig {
     const eye = player.model.camHeight ?? 1.48, hs1 = eye / 1.48;     // shorter characters: lower, closer camera
     const zoom = player.aimZoom || 0;
     const far = player.aimPull || 0;          // a Thunder Arrow being charged: the camera pulls far back
-    const arm = (this.dist + this.pull) * Math.sqrt(hs1) * (1 - 0.35 * zoom) * (1 + 1.9 * far);
+    // the Wind Crow: the arm lengthens to take in the bird, and more the faster it goes
+    const fly = player.fly || 0, spd = Math.hypot(player.vel.x, player.vel.y, player.vel.z);
+    // indoors the arm is shorter and the lens stays under the ceiling
+    const roof = this.ceiling ? this.ceiling(player.pos.x, player.pos.z) : null;
+    this.indoor = damp(this.indoor, roof != null ? 1 : 0, 4, dt);
+    const arm = (1 - 0.3 * this.indoor) * (this.dist + this.pull) * Math.sqrt(hs1) * (1 - 0.35 * zoom) * (1 + 1.9 * far) * (1 + fly * (0.3 + 0.012 * spd));
 
     // focus trails the body a little: feels like a heavy camera operator
-    const target = new THREE.Vector3(player.pos.x, player.visualY + eye, player.pos.z);
+    const target = new THREE.Vector3(player.pos.x, player.visualY + eye + 0.6 * fly * hs1, player.pos.z);     // carried: between him and the bird
     if (this.focus.lengthSq() === 0) this.focus.copy(target);
-    const follow = (player.dashFov || 0) > 0.5 ? 16 : 9;           // the tackle's dash: keep up with him
+    const follow = (player.dashFov || 0) > 0.5 || fly > 0.3 ? 16 : 9;           // the tackle's dash, or a flight: keep up with him
     this.focus.x = damp(this.focus.x, target.x, follow, dt);
     this.focus.z = damp(this.focus.z, target.z, follow, dt);
-    this.focus.y = damp(this.focus.y, target.y, 5, dt);
+    this.focus.y = damp(this.focus.y, target.y, fly > 0.3 ? 12 : 5, dt);
 
     // gameplay arm
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
@@ -83,9 +94,10 @@ export class CameraRig {
     if (this.obstacles) {
       for (let i = 1; i <= 12 && free === 1; i++) {
         const t = i / 12, x = THREE.MathUtils.lerp(player.pos.x, this._pos.x, t), z = THREE.MathUtils.lerp(player.pos.z, this._pos.z, t);
+        const y = THREE.MathUtils.lerp(this._look.y, this._pos.y, t);
         for (const c of this.obstacles) {
           const dx = x - c.x, dz = z - c.z, r = c.r + 0.25;
-          if (dx * dx + dz * dz < r * r) { free = (i - 1) / 12; break; }
+          if (dx * dx + dz * dz < r * r && y < groundY(c.x, c.z) + c.h) { free = (i - 1) / 12; break; }
         }
       }
     }
@@ -100,6 +112,20 @@ export class CameraRig {
       const y = THREE.MathUtils.lerp(this._look.y, this._pos.y, t);
       if (y < minY) this._pos.y += (minY - y) / t;
     }
+    if (roof != null && this._pos.y > roof - 0.3) this._pos.y = roof - 0.3;
+    // and in front of any wall between him and the lens
+    let reach = 1;
+    const L = this._look, Q = this._pos, len = Math.hypot(Q.x - L.x, Q.z - L.z) + 1e-6;
+    for (const c of this.blockers) {
+      const mx = (L.x + Q.x) / 2 - c.x, mz = (L.z + Q.z) / 2 - c.z, near = c.r + len / 2 + 0.5;
+      if (mx * mx + mz * mz > near * near) continue;
+      const t = enters(c, L.x, L.z, Q.x, Q.z, 0.3);
+      if (t >= reach) continue;
+      if (L.y + (Q.y - L.y) * t > groundY(c.x, c.z) + c.h) continue;       // over the roof
+      reach = Math.max(0.08, t - 0.1 / len);
+    }
+    this.reach = reach < this.reach ? reach : damp(this.reach, reach, 2.5, dt);
+    if (this.reach < 0.999) this._pos.lerpVectors(L, Q, this.reach);
 
     cam.position.copy(this._pos);
     if (this.shake > 0) {
@@ -108,8 +134,10 @@ export class CameraRig {
       cam.position.x += Math.sin(t * 1.3) * s; cam.position.y += Math.sin(t * 1.7 + 1) * s;
     }
     cam.lookAt(this._look);
-    const fovT = inMenu ? 42 : 52 + 2 * run + 3 * sprint + (player.state === 'dive' ? 4 : 0) + (player.state === 'tackle' ? 4 : 0) + (player.dashFov || 0) + 10 * far - 26 * zoom;      // the bow zooms in
-    this.fov = damp(this.fov, fovT, zoom > 0.02 || far > 0.02 || this.fov < 50 || (player.dashFov || 0) > 0.5 ? 7 : 1.5, dt);
+    // in flight the lens widens with speed: about 9 degrees at a cruise, 20 flat out, 26 in the fastest dive
+    const flyFov = fly * clamp((spd - 5) * 0.85, 0, 26);
+    const fovT = inMenu ? 42 : 52 + 2 * run + 3 * sprint + (player.state === 'dive' ? 4 : 0) + (player.state === 'tackle' ? 4 : 0) + (player.dashFov || 0) + 10 * far - 26 * zoom + flyFov;      // the bow zooms in
+    this.fov = damp(this.fov, fovT, zoom > 0.02 || far > 0.02 || this.fov < 50 || (player.dashFov || 0) > 0.5 ? 7 : fly > 0.02 ? 4 : 1.5, dt);
     if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
   }
 

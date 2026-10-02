@@ -17,7 +17,7 @@ import { softSprite } from './textures.js';
 
 const SIDES = 14, RINGS = 22;
 const TREES = 160;              // asked for: the glades, the trail and the spacing thin out what actually fits
-const FERNS = 1500;
+const FERNS = 1100;
 const AMBIENT_SHADE = 0.55;     // how much of the sky's ambient light the canopy takes away
 
 // One old tree: a trunk with a root flare and a slow lean, bare for the first sixty percent of its height, then limbs that
@@ -155,7 +155,7 @@ export class Forest {
       let onTrail = false;
       for (const [ox, oz] of [[2.6, 0], [-2.6, 0], [0, 2.6], [0, -2.6]]) if (surfaceAt(x + ox, z + oz, this._s).path > 0.25) onTrail = true;
       if (onTrail) continue;
-      const gap = 7.0 + rnd() * 2.2;
+      const gap = 6.6 + rnd() * 2.0;
       if (anyNear(x, z, gap, (t) => Math.hypot(t.x - x, t.z - z) < gap)) continue;
       const t = { x, z, rot: rnd() * Math.PI * 2, s: 0.85 + rnd() * 0.35, v: trees.length };
       trees.push(t);
@@ -217,7 +217,7 @@ export class Forest {
         // each crown a little different: deeper green, bluer, or yellower
         lm.setColorAt(i, cells[v] === 1 ? col.setRGB(1.0, 0.85 + rnd() * 0.15, 0.7 + rnd() * 0.2) : col.setRGB(0.7 + rnd() * 0.3, 0.82 + rnd() * 0.25, 0.7 + rnd() * 0.3));
         this.list.push({ x: t.x, z: t.z, kind: 'forest', canopyY: V.H * 0.85 * t.s, canopyR: V.H * 0.2 * t.s });
-        this.colliders.push({ x: t.x, z: t.z, r: V.R0 * 1.4 * t.s + 0.1, tall: true });
+        this.colliders.push({ x: t.x, z: t.z, r: V.R0 * 1.4 * t.s + 0.1, h: V.H * 0.95 * t.s, tall: true });      // as tall as the tree: the crow flies over the crowns, arrows stick all the way up
       });
       for (const m of [bm, lm]) { m.castShadow = true; m.receiveShadow = true; group.add(m); }
     });

@@ -1,6 +1,6 @@
 // Minimal HUD in the spirit of the reference: a compass strip with the four lands marked,
 // a quiet stamina ring, and a title card when you walk into a new land.
-import { ZONES } from './world.js';
+import { ZONES, inVillage } from './world.js';
 
 const TITLES = {
   grass: { en: 'Whisper Meadow', jp: '<ruby>風<rt>かぜ</rt></ruby>の<ruby>草原<rt>そうげん</rt></ruby>' },
@@ -8,6 +8,7 @@ const TITLES = {
   leaves: { en: 'Hollow of Falling Leaves', jp: '<ruby>落<rt>お</rt></ruby>ち<ruby>葉<rt>ば</rt></ruby>の<ruby>谷<rt>たに</rt></ruby>' },
   snow: { en: 'Frostveil Rise', jp: '<ruby>雪<rt>ゆき</rt></ruby>の<ruby>丘<rt>おか</rt></ruby>' },
   forest: { en: 'Hush of the Deepwood', jp: '<ruby>深<rt>ふか</rt></ruby>き<ruby>杜<rt>もり</rt></ruby>' },
+  village: { en: 'Brackenford', jp: 'ブラッケンフォードの<ruby>村<rt>むら</rt></ruby>' },
 };
 
 export class Hud {
@@ -35,6 +36,7 @@ export class Hud {
     this.callEl = document.getElementById('callout'); this.hpEl = document.getElementById('hp-fill'); this.hpBox = document.getElementById('hp');
     this.hurtEl = document.getElementById('hurt'); this.crossEl = document.getElementById('crosshair'); this.floatsEl = document.getElementById('floats');
     this.floats = []; this._v = null;
+    this.addMark = add;        // other systems put their own marks on the strip (a fairy, the monk, the oni); mark.off hides one
   }
 
   // a word in the middle of the screen (PARRY, HIT, DODGE...): cls is 'gold', 'red' or ''
@@ -95,13 +97,13 @@ export class Hud {
     // only what changed is written to the page: the compass otherwise touches thirty elements a frame
     for (const m of this.marks) {
       let rel = ((m.bearing - heading + 540) % 360) - 180;
-      const vis = Math.abs(rel) < 80;
+      const vis = !m.off && Math.abs(rel) < 80;
       if (vis !== m.vis) { m.vis = vis; m.el.style.display = vis ? '' : 'none'; }
       if (vis) { const left = Math.round((W / 2 + rel * ppd) * 2) / 2; if (left !== m.left) { m.left = left; m.el.style.left = left + 'px'; } }
     }
     // lands: title when you've been in a new one for a moment
     const s = P.surface;
-    const kind = s.snow > 0.55 ? 'snow' : s.wheat > 0.6 ? 'wheat' : s.forest > 0.6 ? 'forest' : s.leaves > 0.6 ? 'leaves' : (s.grass > 0.85 && s.path < 0.3 ? 'grass' : null);
+    const kind = inVillage(P.pos.x, P.pos.z, -3) ? 'village' : s.snow > 0.55 ? 'snow' : s.wheat > 0.6 ? 'wheat' : s.forest > 0.6 ? 'forest' : s.leaves > 0.6 ? 'leaves' : (s.grass > 0.85 && s.path < 0.3 ? 'grass' : null);
     if (kind && kind !== this.zone) {
       if (this.pending !== kind) { this.pending = kind; this.pendingT = 0; }
       this.pendingT += dt;

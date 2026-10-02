@@ -4,7 +4,7 @@
 // tree in the wheat, and snow-laden pines on the rise.
 import * as THREE from 'three';
 import { mergeGeometries } from '../lib/utils/BufferGeometryUtils.js';
-import { groundY, surfaceAt, ZONES, SPAWN } from './world.js';
+import { groundY, surfaceAt, ZONES, SPAWN, cleared } from './world.js';
 import { GLSL_WIND } from './wind.js';
 import { addTranslucency } from './grass.js';
 import { mulberry32, GLSL_NOISE } from './util.js';
@@ -144,18 +144,18 @@ export class Trees {
     place('birch', 6, box(ZONES.leaves), 6, zone('leaves', 0.4));
     place('pine', 16, box(ZONES.snow, 1.15), 6.5, zone('snow', 0.35));
     place('birch', 3, box(ZONES.snow), 8, zone('snow', 0.2));
-    // (the deep wood stands where the meadow used to: it counts as meadow here so the draws below land exactly where
-    // they always did, and whatever fell inside the wood is dropped afterwards)
-    place('green', 9, { x0: -120, x1: 120, z0: -40, z1: 120 }, 16, (x, z) => { surfaceAt(x, z, s); return s.grass + s.forest > 0.9 && s.path < 0.05 && Math.hypot(x, z) < 125; });
-    place('bush', 26, { x0: -70, x1: 60, z0: -20, z1: 60 }, 3, (x, z) => { surfaceAt(x, z, s); return s.grass + s.forest > 0.7 && s.path < 0.1; });
+    place('green', 9, { x0: -120, x1: 120, z0: -40, z1: 120 }, 16, (x, z) => { surfaceAt(x, z, s); return s.grass > 0.9 && s.path < 0.05 && Math.hypot(x, z) < 125; });
+    place('bush', 26, { x0: -70, x1: 60, z0: -20, z1: 60 }, 3, (x, z) => { surfaceAt(x, z, s); return s.grass > 0.7 && s.path < 0.1; });
     // a few bushes line the path like hedgerows
     for (let x = -60; x < 20; x += 5 + rnd() * 6) {
       const z = 10 + (x < -30 ? 3.5 : 3.0) - x * 0.17 - 4.5 - rnd() * 2;
       surfaceAt(x, z, s);
       if (s.path < 0.2 && s.grass > 0.5) this.list.push({ x, z, kind: 'bush', rot: rnd() * 6, s: 0.7 + rnd() * 0.5 });
     }
-    // (trees that fell inside the wood are only skipped when the meshes are built, so the rest keep their variants)
-    for (const t of this.list) t.inWood = surfaceAt(t.x, t.z, s).forest >= 0.05;
+
+    // the village has been built where these stood (they are still placed, so that everything placed after them
+    // stays where it was, but never grown)
+    for (const t of this.list) t.gone = cleared(t.x, t.z);
 
     // materials
     const barkM = new THREE.MeshStandardMaterial({ map: tx.bark.map, normalMap: tx.bark.normal, roughness: 0.95 });
@@ -219,7 +219,7 @@ export class Trees {
         const V = variants[kind][v];
         V.bark.computeBoundingSphere(); V.leaves.computeBoundingSphere();
         mine.forEach((t, i) => {
-          if (t.inWood) return;
+          if (t.gone) return;
           const y = groundY(t.x, t.z);
           const bm = new THREE.Mesh(V.bark, kind === 'birch' ? birchM : barkSnowM);
           const lm = new THREE.Mesh(V.leaves, tintedLeaf(kind === 'pine' ? pineM : leafM, kind));
@@ -229,13 +229,14 @@ export class Trees {
             group.add(m);
           }
           t.canopyY = V.canopyY * t.s; t.canopyR = V.canopyR * t.s; t.H = V.H * t.s;
-          if (kind !== 'bush') this.colliders.push({ x: t.x, z: t.z, r: (kind === 'pine' ? 0.28 : 0.3) * t.s * (V.H / 10) + 0.12 });
-          else this.colliders.push({ x: t.x, z: t.z, r: 0.35 * t.s });
+          // h: how high it stands, for what flies (the Wind Crow, which goes through bushes)
+          if (kind !== 'bush') this.colliders.push({ x: t.x, z: t.z, r: (kind === 'pine' ? 0.28 : 0.3) * t.s * (V.H / 10) + 0.12, h: t.H });
+          else this.colliders.push({ x: t.x, z: t.z, r: 0.35 * t.s, h: 1.4 * t.s, bush: true });
         });
       }
     }
     game.scene.add(group);
     this.group = group;
-    this.list = this.list.filter(t => !t.inWood);
+    this.list = this.list.filter((t) => !t.gone);
   }
 }

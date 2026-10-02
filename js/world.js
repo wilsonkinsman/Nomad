@@ -16,23 +16,41 @@ export const ZONES = {
   wheat:  { cx: 52,  cz: -38, rx: 42, rz: 31, rot: 0.25 },
   leaves: { cx: -50, cz: -40, rx: 38, rz: 34, rot: -0.3 },
   snow:   { cx: -46, cz: 58,  rx: 46, rz: 40, rot: 0.4 },
-  forest: { cx: 60,  cz: 72,  rx: 48, rz: 42, rot: 0.3 },     // the deep wood, south-east, off the road
+  forest: { cx: 10,  cz: -98, rx: 56, rz: 28, rot: 0 },       // the deep wood, a long strip along the northern edge of the plain
 };
 
 // Openings in the canopy of the deep wood: the sun and the moon reach the floor here, ferns crowd in
 export const GLADES = [
-  { x: 72, z: 52, r: 9 }, { x: 46, z: 74, r: 11 }, { x: 78, z: 96, r: 9 }, { x: 36, z: 56, r: 7 },
+  { x: 30, z: -92, r: 9 }, { x: 2, z: -110, r: 11 }, { x: 50, z: -104, r: 8 }, { x: -22, z: -100, r: 8 },
 ];
 
 export const PATHS = [
   smoothPath([[-160, 36], [-110, 27], [-66, 17], [-30, 11], [0, 5], [30, -1], [62, -2], [96, -10], [160, -20]], 10),
   smoothPath([[0, 5], [-7, -14], [-22, -33], [-38, -52], [-50, -78], [-58, -112]], 10),
   smoothPath([[-30, 11], [-34, 28], [-41, 46], [-49, 66], [-58, 92], [-66, 124]], 10),
-  // the trail into the deep wood, off the road out east
-  smoothPath([[64, -2], [68, 14], [66, 30], [62, 46], [58, 60], [60, 76], [66, 92], [72, 110]], 10),
+  // the trail into the deep wood, off the end of the north road and east, toward the sunrise
+  smoothPath([[-50, -78], [-40, -86], [-28, -91], [-16, -93], [-4, -92], [8, -91], [20, -93], [32, -94], [44, -97]], 10),
 ];
 
 export const SPAWN = { x: -24, z: 10.5 };
+
+// the village of Brackenford, on the level ground south of the road east of the crossroads: it is built over a few
+// overlapping rectangles ([x0, x1, z0, z1]: the old square, the row along the east road and the east street, and the
+// lane going south), where no trees or rocks are left standing but the old tree on the green; the land under it is
+// levelled to a gentle plane that leans down to the south-west, as the land there does anyway
+export const VILLAGE = { x: 48, z: 21, rects: [[25, 72, 1, 41], [64, 103, -6, 42], [36, 80, 38, 60]] };
+const KEEP = [[90, 20, 3]];
+export const inVillage = (x, z, pad = 0) => VILLAGE.rects.some(([a, b, c, d]) => x > a - pad && x < b + pad && z > c - pad && z < d + pad);
+export const cleared = (x, z) => inVillage(x, z, 1) && !KEEP.some(([kx, kz, r]) => Math.hypot(x - kx, z - kz) < r);
+const villageY = (x, z) => 0.2 + (x - VILLAGE.x) * 0.006 - (z - VILLAGE.z) * 0.012;
+function villageK(x, z) {
+  let k = 0;
+  for (const [a, b, c, d] of VILLAGE.rects) {
+    const dx = Math.max(0, a + 2 - x, x - b + 2), dz = Math.max(0, c + 2 - z, z - d + 2);
+    k = Math.max(k, 1 - smoothstep(0, 9, Math.hypot(dx, dz)));
+  }
+  return k;
+}
 
 // how far (x, zz) is from a zone's centre in units of its radius: 1 is the rim of the ellipse
 export function ellipseE(z, x, zz) {
@@ -143,6 +161,9 @@ export function bake(onProgress) {
       const p = pathFieldAt(x, z);
       // paths are worn a little into the ground and follow the smoother landform
       H[j * HRES + i] = lerp(h, low, p * 0.85) - 0.13 * p;
+      // the village's ground: levelled, with only a little give left in it
+      const vk = villageK(x, z);
+      if (vk > 0) H[j * HRES + i] = lerp(H[j * HRES + i], villageY(x, z) + (vnoise(x * 0.3, z * 0.3) - 0.5) * 0.06 - 0.05 * p, vk);
     }
   }
   onProgress?.(0.5);
@@ -186,6 +207,10 @@ function sample4(arr, x, z, out) {
   return out;
 }
 
+// the village's cobbles: how paved (x, z) is, 0..1 (set by the village once it has laid them)
+let paving = null;
+export function setPaving(fn) { paving = fn; }
+
 const _z = [0, 0, 0, 0], _p = [0, 0, 0, 0], _z2 = [0, 0, 0, 0];
 export function surfaceAt(x, z, out = {}) {
   sample4(Z, x, z, _z); sample4(P, x, z, _p); sample4(Z2, x, z, _z2);
@@ -196,8 +221,10 @@ export function surfaceAt(x, z, out = {}) {
   const hollow = _z[2];
   out.leaves = Math.max(hollow, out.forest * 0.8);
   out.path = _p[0]; out.puddle = _p[1]; out.snowDepth = _p[2] * 0.5; out.dry = _p[3];
+  out.paved = paving && inVillage(x, z, 4) ? paving(x, z) : 0;
   let best = 'grass', bw = out.grass * (1 - out.path);
   if (out.path > 0.5 && out.snow < 0.4) { best = out.puddle > 0.4 ? 'puddle' : 'dirt'; bw = 2; }
+  if (out.paved > 0.5) { best = 'stone'; bw = 2; }
   if (out.wheat > bw) { best = 'wheat'; bw = out.wheat; }
   if (hollow > bw) { best = 'leaves'; bw = hollow; }
   if (out.forest > bw) { best = 'forest'; bw = out.forest; }

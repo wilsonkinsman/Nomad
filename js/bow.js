@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { groundY } from './world.js';
 import { clamp, damp, dampAngle, wrapAngle } from './util.js';
 import { ThunderArrows, SUPER_TIME } from './thunderarrow.js';
+import { struck } from './collide.js';
 
 const CHARGE_TIME = 1.1, MIN_DRAW = 0.14, GRAVITY = 9.5;
 const LIMB = 0.4, SAG = 0.14;                       // half the bow's height; how far its tips curve toward the archer
@@ -198,7 +199,7 @@ export class Bow {
       const x = o.x + d.x * s, y = o.y + d.y * s, z = o.z + d.z * s;
       if (y < groundY(x, z)) return out.set(x, y, z);
       for (const c of G.enemies?.targets || []) if (!c.dead) {
-        const gy = groundY(c.x, c.z);
+        const gy = groundY(c.x, c.z) + (c.lift || 0);          // (up in the air, if a Gale Slam threw it)
         if (Math.hypot(x - c.x, z - c.z) < c.r + 0.1 && y > gy && y < gy + (c.y1 || 1.9)) return out.set(x, y, z);
       }
     }
@@ -240,7 +241,7 @@ export class Bow {
       // things that take damage
       for (const c of G.enemies?.targets || []) {
         if (c.dead) continue;
-        const cy = groundY(c.x, c.z);
+        const cy = groundY(c.x, c.z) + (c.lift || 0);
         if (Math.hypot(a.pos.x - c.x, a.pos.z - c.z) < c.r && a.pos.y > cy && a.pos.y < cy + (c.y1 || 1.9)) { this.hit(a, c, a.pos.y - cy); return true; }
       }
       // an Earth Wall: the arrow shatters on the stone
@@ -250,6 +251,8 @@ export class Bow {
         for (let k = 0; k < 8; k++) G.particles.emit('spark', a.pos.x, a.pos.y, a.pos.z, -a.vel.x * 0.05 + (Math.random() - 0.5) * 3, Math.random() * 2, -a.vel.z * 0.05 + (Math.random() - 0.5) * 3, 0.3, 1);
         return false;
       }
+      // the village's walls and roofs
+      for (const c of G.village?.colliders || []) if (struck(c, a.pos.x, a.pos.y, a.pos.z)) { this.stick(a, null); return true; }
       // trees, rocks, posts
       for (const L of [G.trees?.colliders, G.props?.colliders]) if (L) for (const c of L) {
         const dx = a.pos.x - c.x, dz = a.pos.z - c.z;
@@ -272,11 +275,11 @@ export class Bow {
     let dmg = Math.round(6 + 34 * a.charge * a.charge);
     if (head) dmg = Math.round(dmg * 1.5);
     c.onHit?.('arrow', dmg, a.vel.x, a.vel.z);
-    if (head) G.hud?.floatText(new THREE.Vector3(c.x, groundY(c.x, c.z) + 2.5, c.z), 'HEADSHOT', 'gold word');
+    if (head) G.hud?.floatText(new THREE.Vector3(c.x, groundY(c.x, c.z) + (c.lift || 0) + 2.5, c.z), 'HEADSHOT', 'gold word');
     G.audio?.bow('hit'); G.rig.shake = Math.max(G.rig.shake, 0.18);
     for (let i = 0; i < 6; i++) G.particles.emit('dust', a.pos.x, a.pos.y, a.pos.z, -a.vel.x * 0.04, 0.8, -a.vel.z * 0.04, 1.2, 1);
     // it stays in what it hit, and moves with it
-    const host = (c.dummy && c.dummy.tilt) || (c.enemy && c.enemy.group) || null;
+    const host = (c.dummy && c.dummy.tilt) || (c.enemy && c.enemy.group) || c.host || null;
     if (host) { host.add(a.mesh); a.mesh.position.copy(host.worldToLocal(a.pos.clone())); a.mesh.quaternion.copy(host.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(a.mesh.quaternion)); }
     this.stick(a, host);
   }

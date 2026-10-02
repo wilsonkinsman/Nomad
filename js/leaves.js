@@ -74,7 +74,7 @@ export class Leaves {
       mesh.setColorAt(ci, col.setRGB(k, k * (0.85 + rnd() * 0.15), k * (0.8 + rnd() * 0.2)));
     };
     let placed = 0, guard = 0;
-    const local = this.trees.filter(t => Math.hypot(t.x - z.cx, t.z - z.cz) < Math.hypot(z.rx, z.rz) * 1.5);      // the trees that stand over the litter
+    const local = this.trees.filter(t => t.kind !== 'forest' && Math.hypot(t.x - z.cx, t.z - z.cz) < Math.hypot(z.rx, z.rz) * 1.5);      // the trees that stand over the litter
     while (placed < HOLLOW && guard++ < HOLLOW * 30) {
       const x = z.cx + (rnd() * 2 - 1) * z.rx * 1.25, zz = z.cz + (rnd() * 2 - 1) * z.rz * 1.25;
       const sf = surfaceAt(x, zz, s);

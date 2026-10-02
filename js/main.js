@@ -30,6 +30,14 @@ import { Bow } from './bow.js';
 import { Storm } from './storm.js';
 import { Tackle } from './tackle.js';
 import { Earth } from './earth.js';
+import { Gale } from './gale.js';
+import { CrowFlight } from './crowflight.js';
+import { Boss } from './boss.js';
+import { Fairies } from './fairies.js';
+import { Quests } from './quests.js';
+import { Updraft } from './updraft.js';
+import { Village, levelVillage } from './village.js';
+import { Villagers } from './villagers.js';
 
 const QUALITY = {
   low:    { ratio: 0.6,  msaa: 0, shadow: 1024, veg: 0.5,  shaftDiv: 4 },
@@ -87,6 +95,7 @@ addEventListener('resize', applyQuality);
 async function boot() {
   await progress(0.05, 'Shaping the land…');
   World.bake();
+  levelVillage();                          // the ground under each of the village's houses, made flat for its floor
   await progress(0.3, 'Painting the ground…');
   const tex = World.makeTextures();
   game.worldTex = tex;
@@ -127,6 +136,10 @@ async function boot() {
   game.player.colliders = [...game.trees.colliders, ...game.props.colliders];
   game.audio = new Audio(); game.audio.volume = settings.volume;
   game.hud = new Hud(game);
+  await progress(0.92, 'Building Brackenford…');
+  game.village = new Village(game);        // the village: its houses stand in the way of him, his arrows and the camera
+  game.player.colliders.push(...game.village.colliders);
+  rig.blockers = game.village.blockers;
   game.fireflies = new Fireflies(game, softSprite());
   game.contact = new BodyContact(game);
   game.skills = new Skills();
@@ -137,8 +150,15 @@ async function boot() {
   game.storm = new Storm(game);
   game.tackle = new Tackle(game);
   game.earth = new Earth(game);
-  game.systems.push(game.grass, game.wheat, game.snow, game.leaves, game.forest, game.props, game.particles, game.fireflies, game.hud, game.audio);
-  game.systems.push(game.flash, game.enemies, game.bow, game.storm, game.tackle, game.earth);
+  game.gale = new Gale(game);
+  game.crow = new CrowFlight(game);
+  game.boss = new Boss(game);              // the oni and his ring of stones (after the enemies: he joins their targets)
+  game.fairies = new Fairies(game);
+  game.quests = new Quests(game);
+  game.updraft = new Updraft(game);        // the Gale Slam's whirlwind
+  game.villagers = new Villagers(game);    // the people of the village (after the quests: the keepers talk through its dialog box)
+  game.systems.push(game.grass, game.wheat, game.snow, game.leaves, game.forest, game.props, game.village, game.particles, game.fireflies, game.hud, game.audio);
+  game.systems.push(game.flash, game.enemies, game.bow, game.storm, game.tackle, game.earth, game.gale, game.crow, game.boss, game.fairies, game.quests, game.updraft, game.villagers);
   game.systems.unshift(game.contact);    // body hitboxes stamp before the snow and leaves update
   wireEvents();
   game.sky.setNight(settings.night);
@@ -189,7 +209,7 @@ $('btn-start').onclick = () => {
   const first = !game.started;
   game.started = true; showMenu(false);
   game.audio?.resume(); game.audio?.setVolume(settings.volume);
-  if (first) setTimeout(() => game.hud?.hint('WASD move · Shift sprint · Space jump · C dive · X walk', 7), 1200);
+  if (first) setTimeout(() => game.hud?.hint('WASD move · Shift sprint · Space jump · C dive (with S, A or D: dodge) · X walk', 7), 1200);
 };
 $('btn-night').onclick = () => {
   settings.night = !settings.night; saveSettings(); syncMenu();
@@ -257,6 +277,7 @@ function wireEvents() {
   P.on('roll', impact('roll'));
   P.on('flop', impact('flop'));
   P.on('dive', (p, s) => game.audio?.whoosh());
+  P.on('dodge', (p, s) => { game.audio?.whoosh(); if (s.kind === 'dirt' || s.kind === 'grass') pz.emit('dust', p.x, p.y + 0.05, p.z, 0, 0.5, 0, 0.8, 5); });
   P.on('rollEnd', (p, heading, speed) => game.contact.endImpact(p, heading, speed));
   P.on('jump', (p, s) => game.audio?.step(s, 3, false));
 }

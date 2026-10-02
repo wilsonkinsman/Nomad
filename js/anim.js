@@ -8,6 +8,7 @@ import { clamp, lerp, smoothstep, damp } from './util.js';
 import { evalMove } from './swordmoves.js';
 import { DOWN, RUN, UP, TOTAL } from './tackle.js';
 import { KICK_TIME } from './earth.js';
+import { SUMMON, THROW } from './crowflight.js';
 
 const TAU = Math.PI * 2;
 
@@ -368,6 +369,26 @@ export class Animator {
       set('upperarm_L', -1.1 * tuck, 0, 0.3); set('upperarm_R', -1.1 * tuck, 0, -0.3);
       set('forearm_L', -1.6 * tuck); set('forearm_R', -1.6 * tuck);
       target = u > 0.85 ? 1 - smoothstep(0.85, 1, u) : 1;
+    } else if (P.state === 'dodge') {
+      // a quick hop back or aside: he springs off one foot, tucks his knees under him in the air with his arms out
+      // for balance, leaning a little into the way he faces (back) or away from the way he goes (aside), and lands
+      // crouched and comes up out of it
+      const D = P.dodgeL || { x: 0, z: -1 }, back = Math.max(0, -D.z), side = D.x;
+      const air = Math.sin(clamp(t / 0.42, 0, 1) * Math.PI), land = smoothstep(0.3, 0.42, t) * (1 - smoothstep(0.42, 0.62, t));
+      target = 1 - smoothstep(0.42, 0.62, t);
+      O.pitch = 0.28 * back * air + 0.15 * land; O.roll = -0.3 * side * air; O.pivotY = 0.95;
+      set('spine', 0.18 * back * air + 0.22 * land, 0, 0.12 * side * air); set('chest', 0.12 * air);
+      set('neck', -0.2 * back * air - 0.1 * land); set('head', -0.15 * back * air);
+      for (const [s, sg] of [['L', 1], ['R', -1]]) {
+        // the leg on the side he goes reaches out to land on; the other is tucked
+        const lead = Math.max(0, sg * -side), spread = sg * (0.1 + 0.35 * lead) * air;
+        set('thigh_' + s, -0.85 * air - 0.6 * land + 0.25 * back * air, 0, spread);
+        set('shin_' + s, 1.3 * air + 1.0 * land);
+        set('foot_' + s, 0.25 * air - 0.35 * land);
+        set('upperarm_' + s, -0.35 * back * air, 0, sg * (0.25 + 0.75 * air));
+        set('forearm_' + s, -0.5 * air);
+      }
+      O.hipsY = -0.13 * land;
     } else if (P.state === 'flop') {
       target = 1;
       O.pitch = 1.42; O.pivotY = 0.2;
@@ -407,6 +428,55 @@ export class Animator {
         if (k === 'hipsY') { O.hipsY = lerp(a[k], c[k], u); continue; }
         const v = a[k], w = c[k] || v;
         set(k, lerp(v[0], w[0], u), lerp(v[1] || 0, w[1] || 0, u), lerp(v[2] || 0, w[2] || 0, u));
+      }
+    } else if (P.state === 'crow' && P.crow) {
+      // Wind Crow (crowflight.js works out the swing and hands it over in P.crow).
+      // The summon: he looks back over his shoulder for it with his left arm up to call it, then crouches and
+      // springs to meet it with both hands. Carried: both arms straight up to its feet and the body turned about
+      // his hands (the pivot is put there) by the swing; his legs scramble while he is dragged and dangle and
+      // trail once he is up. The throw: the legs tuck and swing through under it, the arms go back over his head
+      // and whip forward as he lets go, and he drops.
+      const C = P.crow, ct = C.t;
+      if (C.phase === 'summon') {
+        const u = clamp(ct / SUMMON, 0, 1);
+        target = smoothstep(0, 0.15, u);
+        O.pitch = 0; O.pivotY = 0.95;
+        const look = smoothstep(0, 0.25, u) * (1 - smoothstep(0.55, 0.8, u));
+        const crouch = smoothstep(0.5, 0.75, u) * (1 - smoothstep(0.78, 0.95, u));
+        const reach = smoothstep(0.72, 1, u);
+        set('spine', 0.12 * crouch - 0.08 * reach, 0.3 * look); set('chest', 0.12 * crouch - 0.1 * reach, 0.45 * look);
+        set('neck', -0.15 * reach - 0.1 * crouch, 0.5 * look); set('head', -0.3 * reach, 0.6 * look);
+        set('upperarm_L', lerp(lerp(0.05, -2.4, look), -2.95, reach), 0, lerp(lerp(0.1, 0.55, look), 0.16, reach));
+        set('upperarm_R', lerp(0.1 + 0.3 * crouch, -2.95, reach), 0, lerp(-0.15, -0.16, reach));
+        set('forearm_L', lerp(-0.35, -0.12, reach)); set('forearm_R', lerp(-0.5 - 0.5 * crouch, -0.12, reach));
+        for (const [s, sg] of [['L', 1], ['R', -1]]) { set('thigh_' + s, -0.55 * crouch, 0, sg * 0.04); set('shin_' + s, 0.95 * crouch); set('foot_' + s, -0.4 * crouch + 0.3 * reach); }
+        O.hipsY = -0.12 * crouch;
+      } else {
+        const thr = C.phase === 'throw', u = thr ? clamp(ct / THROW, 0, 1) : 0;
+        target = thr ? 1 - smoothstep(0.7, 1, u) : 1;
+        O.pitch = C.lean; O.roll = C.roll; O.pivotY = C.reach;
+        const lean = clamp(C.lean, 0, 1.3), run = C.run;
+        const back = thr ? smoothstep(0, 0.28, u) * (1 - smoothstep(0.28, 0.5, u)) : 0, whip = thr ? smoothstep(0.28, 0.55, u) : 0;
+        const ua = -2.95 - 0.4 * back + 1.9 * whip;
+        set('shoulder_L', 0, 0, 0.2 * (1 - whip)); set('shoulder_R', 0, 0, -0.2 * (1 - whip));
+        set('upperarm_L', ua, 0, 0.16 + 0.3 * whip); set('upperarm_R', ua, 0, -0.16 - 0.3 * whip);
+        set('forearm_L', -0.12 - 0.4 * whip); set('forearm_R', -0.12 - 0.4 * whip);
+        set('hand_L', 0.2); set('hand_R', 0.2);
+        // the back arches under the pull; the head looks along the way he is carried
+        set('spine', -0.06 - 0.05 * lean + 0.2 * whip); set('chest', -0.08 + 0.15 * whip);
+        set('neck', -0.4 * lean + 0.1 * back); set('head', -0.3 * lean + 0.05);
+        const tuck = thr ? smoothstep(0, 0.3, u) * (1 - smoothstep(0.45, 0.8, u)) : 0;
+        for (const [s, sg, o] of [['L', 1, 0], ['R', -1, Math.PI]]) {
+          const sw = Math.sin(C.runPh + o), cw = Math.cos(C.runPh + o);
+          const sway = 0.1 * Math.sin(this.t * 2.3 + o) + 0.06 * Math.sin(this.t * 3.7 + o * 0.5);
+          // dangling: knees a little bent, toes pointed, one leg a little ahead of the other
+          const aT = 0.08 + sway - 0.1 * (1 - lean) + (s === 'L' ? -0.12 : 0.1), aK = lerp(0.6, 0.25, lean / 1.3), aF = 0.5;
+          // dragged: running, the feet catching the ground and being torn back off it
+          const rT = -0.3 - 0.8 * sw, rK = 0.4 + 1.0 * Math.max(0, cw), rF = -0.1 + 0.35 * sw;
+          set('thigh_' + s, lerp(lerp(aT, rT, run), -1.2, tuck), 0, sg * 0.06);
+          set('shin_' + s, lerp(lerp(aK, rK, run), 1.6, tuck));
+          set('foot_' + s, lerp(lerp(aF, rF, run), 0.3, tuck));
+        }
       }
     } else if (P.state === 'getup') {
       const u = clamp(t / P.getupTime, 0, 1), e = u * u * (3 - 2 * u);
