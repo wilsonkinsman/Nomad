@@ -225,6 +225,8 @@ export class Audio {
       else if (kind === 'flap') { this.grain(t, 380, 0.8, 0.14, 0.22 * k, 'lowpass'); this.thump(t, 60, 0.12, 0.18 * k); }
       else if (kind === 'bump') { this.thump(t, 110, 0.15, 0.5); this.grain(t, 1600, 1.2, 0.12, 0.25); }
       else if (kind === 'throw') { this.sweep(t, 600, 3200, 1100, 1.0, 0.32, 0.38); this.thump(t, 120, 0.1, 0.25); }
+      else if (kind === 'lift') { this.sweep(t, 180, 1300, 2400, 0.9, 0.7, 0.4); this.grain(t, 400, 0.6, 0.7, 0.35, 'lowpass'); }
+      else if (kind === 'drop') { this.thump(t, 58, 0.45, 0.8 * k); this.thump(t, 115, 0.2, 0.4 * k); this.grain(t, 450, 0.6, 0.45, 0.45 * k, 'lowpass'); this.sweep(t, 2200, 700, 250, 0.8, 0.25, 0.25 * k); }
       else if (kind === 'burst') {
         this.thump(t, 55, 0.7, 0.9 * k); this.thump(t + 0.02, 110, 0.3, 0.5 * k);
         this.grain(t, 500, 0.5, 1.1, 0.6 * k, 'lowpass'); this.sweep(t, 2400, 700, 220, 0.7, 0.9, 0.38 * k);

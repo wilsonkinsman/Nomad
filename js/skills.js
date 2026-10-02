@@ -55,7 +55,7 @@ const ICONS = {
 
 export const SKILLS = [
   { id: 'skyslam', name: 'Sky Slam', path: 'strength', cost: 1, requires: null, row: 0, icon: ICONS.skyslam,
-    desc: 'Press jump again in the air to leap much higher. At the top, click to plunge: the landing is a shockwave that hurts everything around you and tears up the grass. Under Earth Power the landing raises a ring of stone that traps you in with whoever is near for six seconds.' },
+    desc: 'Press jump again in the air to leap much higher. At the top, click to plunge: the landing is a shockwave that hurts everything around you and tears up the grass. With the wind on you, a whirlwind throws everyone near high into the air and slams them back down. Under Earth Power the landing raises a ring of stone round you and whoever is near for six seconds, too high to jump: only another Sky Slam gets you over it.' },
   // lightning: everything grows out of the charged blade
   { id: 'storm', name: 'Storm Call', path: 'lightning', cost: 1, requires: null, row: 0, col: 0.5, icon: ICONS.storm,
     desc: 'Press R. Hold the blade straight up and call down lightning onto it. For forty-five seconds the sword crackles: it hits harder, stuns what it hits and singes the leaves. Once it fades the sky needs ten seconds before it will answer again.' },

@@ -257,6 +257,8 @@ export class Player {
       const dx = this.pos.x - c.x, dz = this.pos.z - c.z, r = c.r + 0.28;
       const d2 = dx * dx + dz * dz;
       if (d2 < r * r && d2 > 1e-8) {
+        // an Earth Wall only holds him up to its top: a leap high enough (a Sky Slam) clears it
+        if (c.wall && this.pos.y > c.wall.top) continue;
         // carried through a bush, or over anything else: trees, rocks and walls only stand so high (h, metres)
         if (this.state === 'crow' && (c.bush || this.pos.y > (c.wall ? c.wall.top : groundY(c.x, c.z) + (c.h ?? 2.5)))) continue;
         const d = Math.sqrt(d2), push = (r - d) / d;

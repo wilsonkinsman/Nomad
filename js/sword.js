@@ -364,9 +364,9 @@ export class Weapon {
     G.trample.stamp(px, pz, R * 1.1, 1, 0, 0, 1);
     for (let a = 0; a < 6.28; a += 0.5) G.cut.stamp(px + Math.cos(a) * R * 0.8, pz + Math.sin(a) * R * 0.8, R * 0.45, 1);
     // everything hurt in reach, hardest at the middle
-    const charged = !!(G.storm && G.storm.charged), earthy = !!(G.earth && G.earth.active);
+    const charged = !!(G.storm && G.storm.charged), earthy = !!(G.earth && G.earth.active), windy = !!(G.gale && G.gale.active);
     for (const c of G.enemies?.targets || []) {
-      if (c.dead) continue;
+      if (c.dead || c.air) continue;
       const d = Math.hypot(c.x - px, c.z - pz);
       if (d < R + c.r) {
         c.onHit?.('slam', Math.round(lerp(48, 22, clamp(d / R, 0, 1)) * (charged ? CHARGED : 1)), c.x - px, c.z - pz, this.fx(charged, earthy));
@@ -386,7 +386,10 @@ export class Weapon {
     for (let i = 0; i < 46; i++) { const a = Math.random() * Math.PI * 2, r = Math.random() * R * 0.8; pz2.emit(surf.wheat > 0.35 ? 'chaff' : 'clip', px + Math.cos(a) * r, py + 0.2, pz + Math.sin(a) * r, Math.cos(a) * 3, 3 + Math.random() * 4, Math.sin(a) * 3, 1.5, 1); }
     this.waves.push({ x: px, y: py + 0.05, z: pz, t: 0 });
     G.audio?.slam(); G.rig.shake = 1; G.hitStop = Math.max(G.hitStop, 0.12);
+    // the wind answers it with a whirlwind that throws everything near up into the air and slams it back down
+    if (windy) G.updraft?.launch(px, pz);
     if (earthy) G.earth.cage(px, pz);      // the earth answers the slam with a ring of stone
+    else if (windy) G.hud?.callout('GALE SLAM', 'wind');
     else G.hud?.callout(charged ? 'STORM SLAM' : 'SKY SLAM', charged ? 'blue' : 'gold');
     this.begin('slamland'); this.w = 1;
   }
@@ -719,7 +722,7 @@ export class Weapon {
     for (const L of list) {
       if (!L) continue;
       for (const c of L) {
-        if (c.dead) continue;
+        if (c.dead || c.lift > 1.2) continue;          // (thrown up in the air by a Gale Slam, out of the blade's reach)
         const dx = c.x - F.x, dz = c.z - F.z, d2 = dx * dx + dz * dz;
         if (d2 > 3.6 * 3.6) continue;
         if (this.struck.has(c)) continue;

@@ -12,6 +12,7 @@
 //   reel     a parried blow, or one very heavy hit, leaves him off balance for REEL s, taking half as much again.
 //   stun     the storm holds him half as long as it would a man, and not again for a few seconds.
 //   dead     he sinks to his knees, falls, and burns away to embers and smoke.
+// A Gale Slam throws him up (half as high as a man, and not again for a while: updraft.js); he lands staggered.
 // His blows miss anyone up in the air out of reach (the Wind Crow). Leave the ring far behind and he goes back to his
 // stone and his wounds close. He is one of enemies.targets, so every weapon and skill works on him.
 import * as THREE from 'three';
@@ -75,7 +76,9 @@ export class Boss {
     this.state = 'dormant'; this.t = 0; this.cd = 0; this.leapCd = 0; this.stunCd = 0; this.reelCd = 0; this.away = 0;
     this.enraged = false; this.flash = 0; this.walk = 0; this.phase = 0; this.hit = false; this.from = new THREE.Vector3(); this.to = new THREE.Vector3();
     const self = this;
-    this.target = { x: 0, z: 0, r: 1.05, y1: 3.3, boss: this, host: this.root, get dead() { return self.down; }, onHit: (k, dmg, dx, dz, fx) => this.hurt(dmg, dx, dz, k, fx) };
+    this.target = { x: 0, z: 0, r: 1.05, y1: 3.3, lift: 0, spin: 0, tilt: 0, heavy: true, boss: this, host: this.root, get dead() { return self.down; }, onHit: (k, dmg, dx, dz, fx) => this.hurt(dmg, dx, dz, k, fx),
+      onLaunch: () => { this.clearMarkers(); this.mark = null; if (this.state === 'dormant') this.wake(); },
+      onLand: () => { this.root.rotation.z = 0; if (!this.down) this.reel(1.6); } };
     this.collider = { x: 0, z: 0, r: 0.95, h: 3.2 };
     game.enemies.targets.push(this.target);
     game.player.colliders.push(this.collider);
@@ -216,7 +219,7 @@ export class Boss {
     const G = this.game;
     for (const m of this.mats) { m.transparent = false; m.opacity = 1; m.depthWrite = true; m.needsUpdate = true; }
     this.clearMarkers();
-    this.hp = this.shown = MAX_HP; this.enraged = false; this.flash = 0; this.cd = 1; this.leapCd = 2;
+    this.hp = this.shown = MAX_HP; this.enraged = false; this.flash = 0; this.cd = 1; this.leapCd = 2; this.target.air = false; this.target.lift = 0;
     if (G.skills.got('quest:oni')) {
       this.state = 'gone'; this.root.visible = false;
       this.collider.x = this.target.x = 1e4; this.collider.z = this.target.z = 1e4;
@@ -245,7 +248,7 @@ export class Boss {
     // he is heavy: blows barely move him
     const knock = fx && fx.knock ? fx.knock * 0.2 : 0.04;
     this.pos.x += dx / l * knock; this.pos.z += dz / l * knock;
-    G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + 3.4, this.pos.z), (crit ? 'CRIT ' : '') + dmg, crit || dmg >= 30 ? 'big' : '');
+    G.hud?.floatText(new THREE.Vector3(this.pos.x, this.pos.y + this.target.lift + 3.4, this.pos.z), (crit ? 'CRIT ' : '') + dmg, crit || dmg >= 30 ? 'big' : '');
     if (Math.random() < 0.35) G.audio?.oni('hurt');
     if (this.hp <= 0) { this.die(); return true; }
     if (dmg >= 60 && this.reelCd <= 0 && this.state !== 'reel') this.reel(1.2);
@@ -322,9 +325,21 @@ export class Boss {
   }
 
   // ---------------------------------------------------------------- every frame
+  // thrown up by a Gale Slam: he flails, turning in the wind, and does nothing else until he lands
+  airborne(dt, G) {
+    const goal = this.goal, c = this.target;
+    reelPose(goal, 0.3); goal.armLZ = 1.35; goal.armRZ = -1.25; goal.thighL = -0.7; goal.kneeL = 1.1; goal.kneeR = 0.7; goal.jaw = 0.7;
+    for (const k of POSE_KEYS) this.pose[k] = damp(this.pose[k], goal[k], 8, dt);
+    this.collider.x = 1e4;          // nothing to walk into under him
+    this.apply();
+    this.root.position.y += c.lift; this.root.rotation.y = this.heading + c.spin; this.root.rotation.z = c.tilt;
+    this.bars(dt, G);
+  }
+
   update(dt, G) {
     this.updateMarkers(dt);
     if (this.state === 'gone') return;
+    if (this.target.air) { this.airborne(dt, G); return; }
     const P = G.player, t = (this.t += dt);
     this.cd -= dt; this.leapCd -= dt; this.stunCd -= dt; this.reelCd -= dt;
     const dx = P.pos.x - this.pos.x, dz = P.pos.z - this.pos.z, dist = Math.hypot(dx, dz);
@@ -486,7 +501,11 @@ export class Boss {
     // the pose, eased toward this frame's goal (fast for the blows themselves)
     for (const k of POSE_KEYS) this.pose[k] = damp(this.pose[k], goal[k], rate, dt);
     this.apply();
-    // a blow lands: he flushes; enraged, his eyes burn hotter
+    this.bars(dt, G);
+  }
+
+  // a blow lands: he flushes; enraged, his eyes burn hotter. And his life on the bar
+  bars(dt, G) {
     this.flash = Math.max(0, this.flash - dt * 5);
     this.skin.emissive.setRGB(0.5 * this.flash, 0.12 * this.flash, 0.08 * this.flash);
     this.eyeM.emissiveIntensity = (this.enraged ? 2.6 : 1.6) + 0.5 * Math.sin(G.time * (this.enraged ? 14 : 4));

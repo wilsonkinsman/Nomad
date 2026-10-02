@@ -238,7 +238,7 @@ export class CrowFlight {
       const x = o.x + d.x * s, y = o.y + d.y * s, z = o.z + d.z * s;
       if (y < groundY(x, z)) return out.set(x, y, z);
       for (const c of G.enemies?.targets || []) if (!c.dead) {
-        const gy = groundY(c.x, c.z);
+        const gy = groundY(c.x, c.z) + (c.lift || 0);          // (up in the air, if a Gale Slam threw it)
         if (Math.hypot(x - c.x, z - c.z) < c.r + 0.2 && y > gy && y < gy + (c.y1 || 1.9)) return out.set(x, y, z);
       }
     }
@@ -253,12 +253,12 @@ export class CrowFlight {
     let target = null, best = LOCK;
     for (const c of G.enemies?.targets || []) {
       if (c.dead) continue;
-      _c.set(c.x - o.x, groundY(c.x, c.z) + 1 - o.y, c.z - o.z);
+      _c.set(c.x - o.x, groundY(c.x, c.z) + (c.lift || 0) + 1 - o.y, c.z - o.z);
       const dist = _c.length();
       if (dist < best && _c.dot(d) / dist > 0.93) { best = dist; target = c; }
     }
     // something near the crosshair: it is thrown straight at it
-    if (target) d.set(target.x - o.x, groundY(target.x, target.z) + 1 - o.y, target.z - o.z).normalize();
+    if (target) d.set(target.x - o.x, groundY(target.x, target.z) + (target.lift || 0) + 1 - o.y, target.z - o.z).normalize();
     this.dart = { pos: o.clone(), vel: d.clone().multiplyScalar(CROW_SPEED).addScaledVector(P.vel, 0.25), t: 0, target };
     for (const s of this.trails) s.clear();          // the folded wings draw new streaks from where their tips now are
     P.floating = false;
@@ -397,7 +397,7 @@ export class CrowFlight {
     s.t += dt;
     if (s.target && !s.target.dead) {
       // it leans in toward what it was thrown at
-      _a.set(s.target.x, groundY(s.target.x, s.target.z) + 1.0, s.target.z).sub(s.pos).normalize();
+      _a.set(s.target.x, groundY(s.target.x, s.target.z) + (s.target.lift || 0) + 1.0, s.target.z).sub(s.pos).normalize();
       const sp = s.vel.length(); _b.copy(s.vel).divideScalar(sp || 1);
       const ang = Math.acos(clamp(_b.dot(_a), -1, 1));
       if (ang > 1e-4) _b.lerp(_a, Math.min(1, HOME * dt / ang)).normalize();
@@ -428,7 +428,7 @@ export class CrowFlight {
     if (p.y - groundY(p.x, p.z) < 0.3) return 'ground';
     for (const c of G.enemies?.targets || []) {
       if (c.dead) continue;
-      const cy = groundY(c.x, c.z);
+      const cy = groundY(c.x, c.z) + (c.lift || 0);
       if (Math.hypot(p.x - c.x, p.z - c.z) < c.r + 0.45 && p.y > cy - 0.2 && p.y < cy + (c.y1 || 1.9) + 0.3) return c;
     }
     if (G.earth?.blockArrow(p)) return 'wall';
@@ -463,11 +463,11 @@ export class CrowFlight {
     // everything within reach is hurt and thrown back, hardest at the middle
     for (const c of G.enemies?.targets || []) {
       if (c.dead) continue;
-      const dx = c.x - x, dz = c.z - z, d = Math.hypot(dx, groundY(c.x, c.z) + 1 - y, dz);
+      const dx = c.x - x, dz = c.z - z, d = Math.hypot(dx, groundY(c.x, c.z) + (c.lift || 0) + 1 - y, dz);
       if (d > BURST_R + c.r) continue;
       const f = 1 - clamp((d - c.r) / BURST_R, 0, 1), dh = Math.hypot(dx, dz) || 1;
       c.onHit?.('gale', Math.round(lerp(BURST_DMG[0], BURST_DMG[1], f)), dx / dh, dz / dh, { knock: 0.6 + BURST_KNOCK * f });
-      const cy = groundY(c.x, c.z) + 1;
+      const cy = groundY(c.x, c.z) + (c.lift || 0) + 1;
       for (let i = 0; i < 12; i++) G.particles.emit('feather', c.x, cy, c.z, dx / dh * 4 + (Math.random() - 0.5) * 3, Math.random() * 3, dz / dh * 4 + (Math.random() - 0.5) * 3, 1, 1);
     }
     for (const w of G.earth?.walls || []) if (w.up && !w.falling && w.circles.some((c) => Math.hypot(c.x - x, c.z - z) < BURST_R)) w.jolt(w.x, Math.min(y, w.top - 0.3), w.z);

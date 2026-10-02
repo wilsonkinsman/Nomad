@@ -198,7 +198,7 @@ export class Bow {
       const x = o.x + d.x * s, y = o.y + d.y * s, z = o.z + d.z * s;
       if (y < groundY(x, z)) return out.set(x, y, z);
       for (const c of G.enemies?.targets || []) if (!c.dead) {
-        const gy = groundY(c.x, c.z);
+        const gy = groundY(c.x, c.z) + (c.lift || 0);          // (up in the air, if a Gale Slam threw it)
         if (Math.hypot(x - c.x, z - c.z) < c.r + 0.1 && y > gy && y < gy + (c.y1 || 1.9)) return out.set(x, y, z);
       }
     }
@@ -240,7 +240,7 @@ export class Bow {
       // things that take damage
       for (const c of G.enemies?.targets || []) {
         if (c.dead) continue;
-        const cy = groundY(c.x, c.z);
+        const cy = groundY(c.x, c.z) + (c.lift || 0);
         if (Math.hypot(a.pos.x - c.x, a.pos.z - c.z) < c.r && a.pos.y > cy && a.pos.y < cy + (c.y1 || 1.9)) { this.hit(a, c, a.pos.y - cy); return true; }
       }
       // an Earth Wall: the arrow shatters on the stone
@@ -272,7 +272,7 @@ export class Bow {
     let dmg = Math.round(6 + 34 * a.charge * a.charge);
     if (head) dmg = Math.round(dmg * 1.5);
     c.onHit?.('arrow', dmg, a.vel.x, a.vel.z);
-    if (head) G.hud?.floatText(new THREE.Vector3(c.x, groundY(c.x, c.z) + 2.5, c.z), 'HEADSHOT', 'gold word');
+    if (head) G.hud?.floatText(new THREE.Vector3(c.x, groundY(c.x, c.z) + (c.lift || 0) + 2.5, c.z), 'HEADSHOT', 'gold word');
     G.audio?.bow('hit'); G.rig.shake = Math.max(G.rig.shake, 0.18);
     for (let i = 0; i < 6; i++) G.particles.emit('dust', a.pos.x, a.pos.y, a.pos.z, -a.vel.x * 0.04, 0.8, -a.vel.z * 0.04, 1.2, 1);
     // it stays in what it hit, and moves with it

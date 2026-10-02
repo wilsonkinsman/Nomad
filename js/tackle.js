@@ -66,7 +66,7 @@ export class Tackle {
     // and stop on top of it
     let want = DIST, best = null, bd = LOCK;
     for (const c of this.game.enemies?.targets || []) {
-      if (c.dead) continue;
+      if (c.dead || c.lift > 1) continue;            // (thrown up out of reach by a Gale Slam)
       const dx = c.x - P.pos.x, dz = c.z - P.pos.z, d = Math.hypot(dx, dz);
       if (d < bd && d > 0.3 && (dx * this.dir.x + dz * this.dir.y) / d > 0.77) { bd = d; best = c; }
     }
@@ -211,7 +211,7 @@ export class Tackle {
     // what is in front of the cat takes it
     let at = null;
     for (const c of G.enemies?.targets || []) {
-      if (c.dead) continue;
+      if (c.dead || c.lift > 1.6) continue;
       const ex = c.x - P.pos.x, ez = c.z - P.pos.z, d = Math.hypot(ex, ez);
       if (d > SWIPE_REACH + c.r || (ex * fx + ez * fz) / Math.max(d, 1e-3) < 0.2) continue;
       c.onHit?.('claw', SWIPE_DMG, ex, ez, { zap: true, stun: STUN, knock: 0.35 });
@@ -273,7 +273,7 @@ export class Tackle {
   strike(a, b) {
     const G = this.game, abx = b.x - a.x, abz = b.z - a.z, L2 = abx * abx + abz * abz || 1;
     for (const c of G.enemies?.targets || []) {
-      if (c.dead || this.hit.has(c)) continue;
+      if (c.dead || c.lift > 1 || this.hit.has(c)) continue;
       const u = Math.max(0, Math.min(1, ((c.x - a.x) * abx + (c.z - a.z) * abz) / L2));
       const qx = a.x + abx * u, qz = a.z + abz * u, ex = c.x - qx, ez = c.z - qz;
       if (Math.hypot(ex, ez) > c.r + REACH) continue;
