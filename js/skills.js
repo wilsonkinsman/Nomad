@@ -63,7 +63,7 @@ export const SKILLS = [
   { id: 'storm', name: 'Storm Call', path: 'lightning', cost: 1, requires: null, icon: ICONS.storm,
     desc: 'Press R. Hold the blade straight up and call down lightning onto it. For forty-five seconds the sword crackles: it hits harder, stuns what it hits and singes the leaves. Once it fades the sky needs ten seconds before it will answer again.' },
   { id: 'flash', name: 'Flash Roll', path: 'lightning', cost: 1, requires: 'storm', icon: ICONS.flash,
-    desc: 'Tap the roll twice, fast (C or right-click). Instead of rolling you vanish in a flash of black lines and appear where the roll would have ended.' },
+    desc: 'Tap the roll (or the dodge) twice, fast (C or right-click). Instead of rolling you vanish in a flash of black lines and appear where the roll would have ended.' },
   { id: 'tackle', name: 'Electrical Tackle', path: 'lightning', cost: 1, requires: 'storm', icon: ICONS.tackle,
     desc: 'Press T while the storm is on your blade. He drops to all fours and a great cat of lightning forms around him, then the cat pounces: eight metres in a flash, straight at whatever is ahead, and rears up to rake it with both paws. The ground behind is burnt and whatever it catches is stunned.' },
   { id: 'thunderarrow', name: 'Thunder Arrow', path: 'lightning', cost: 1, requires: 'storm', icon: ICONS.thunderarrow,

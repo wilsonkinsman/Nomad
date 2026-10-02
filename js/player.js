@@ -1,6 +1,8 @@
 // Player controller: weighty acceleration, surface-dependent speed (deep snow drags, wheat
-// slows a little), stamina for sprinting and diving, jump with coyote time, and a dive that
-// rolls out on firm ground or belly-flops into snow. Emits events for footsteps and impacts.
+// slows a little), stamina for sprinting and diving, jump with coyote time, a dive that
+// rolls out on firm ground or belly-flops into snow, and a dodge: the dive key held back or to
+// one side hops him that way, still facing where the camera looks. Emits events for footsteps
+// and impacts.
 import * as THREE from 'three';
 import { groundY, surfaceAt, PLAY_RADIUS, SPAWN, SUN_AZ } from './world.js';
 import { Nomad } from './nomad.js';
@@ -11,6 +13,9 @@ import { SPEED_UP, JUMP_UP } from './gale.js';
 import { pushOut } from './collide.js';
 
 const GRAV = -13;
+// the dodge: how fast he springs away and how high, how long until he has his feet again, and for how much of it
+// a blow passes him by
+const DODGE_SPEED = 6.6, DODGE_HOP = 2.7, DODGE_TIME = 0.5, DODGE_SAFE = 0.38;
 
 export class Player {
   // model: a ready character (the Atsu GLB); without one, the procedural nomad is built
@@ -76,10 +81,31 @@ export class Player {
 
   setState(s) { this.state = s; this.stateT = 0; }
 
+  // is the dive key, with the way the stick is held (as the camera sees it), asking for a dodge: back, or to one
+  // side? (Ahead, or nothing held, it is the dive.)
+  dodgeWanted(input) {
+    const m = input.move();
+    return m.mag > 0.3 && (m.y < -0.35 || (Math.abs(m.x) > 0.55 && m.y < 0.5));
+  }
+  // the dodge: a low quick hop along (dx, dz), turning to face where the camera looks as he goes. For the
+  // animation, which way that is in his own frame (x to his right, z ahead) is kept in dodgeL; the flash roll can
+  // go on from it as it does from a dive
+  dodge(dx, dz, deep, S) {
+    const b = this.game.rig.basis(), h = this.dodgeFace = Math.atan2(b.fx, b.fz);
+    this.dodgeL = { x: -dx * Math.cos(h) + dz * Math.sin(h), z: dx * Math.sin(h) + dz * Math.cos(h) };
+    const v = DODGE_SPEED * (1 - 0.3 * deep);
+    this.vel.set(dx * v, DODGE_HOP - 0.5 * deep, dz * v);
+    this.grounded = false; this.coyote = 0;
+    this.diveFrom = this.pos.clone(); this.diveDir = new THREE.Vector2(dx, dz); this.diveSpeed = v * 0.75; this.diveVy = this.vel.y;
+    this.setState('dodge');
+    this.emit('dodge', this.pos.clone(), S);
+  }
+
   // a blow lands on him. Returns 'dodged' if he was rolling or flashing through it, else 'hit'.
   hurt(amount, from) {
     const g = this.game;
     if (this.state === 'dive' || this.state === 'roll' || this.state === 'flash' || this.state === 'tackle' || this.invuln > 0) return 'dodged';
+    if (this.state === 'dodge' && this.stateT < DODGE_SAFE) return 'dodged';
     // the earth takes half of every blow while it is with him
     if (g.earth && g.earth.active) { amount = Math.ceil(amount / 2); for (let i = 0; i < 10; i++) g.particles.emit('dust', this.pos.x, this.pos.y + 1.1, this.pos.z, (Math.random() - 0.5) * 3, Math.random() * 2, (Math.random() - 0.5) * 3, 0.5, 1); }
     this.hp = Math.max(0, this.hp - amount); this.regenDelay = 5; this.invuln = 0.6;
@@ -111,7 +137,7 @@ export class Player {
 
     // ---------------------------------------------------------------- intent
     let mx = 0, mz = 0, mag = 0;
-    const busy = this.state === 'dive' || this.state === 'roll' || this.state === 'flop' || this.state === 'getup' || this.state === 'flash' || this.state === 'tackle' || this.state === 'rockkick' || this.state === 'crow';
+    const busy = this.state === 'dive' || this.state === 'roll' || this.state === 'flop' || this.state === 'getup' || this.state === 'flash' || this.state === 'tackle' || this.state === 'rockkick' || this.state === 'crow' || this.state === 'dodge';
     if (!inMenu && !busy) {
       const m = input.move(), b = g.rig.basis();
       mx = b.fx * m.y + b.rx * m.x; mz = b.fz * m.y + b.rz * m.x;
@@ -148,6 +174,11 @@ export class Player {
       this.vel.z = damp(this.vel.z, tz, rate, dt);
     } else if (this.state === 'roll') {
       this.vel.x *= Math.exp(-1.6 * dt); this.vel.z *= Math.exp(-1.6 * dt);
+    } else if (this.state === 'dodge') {
+      // carried through the hop, then brought up short by the feet once they are down
+      const k = this.grounded ? 9 : 0.6;
+      this.vel.x *= Math.exp(-k * dt); this.vel.z *= Math.exp(-k * dt);
+      this.heading = dampAngle(this.heading, this.dodgeFace, 30, dt);
     } else if (this.state === 'flop') {
       this.vel.x *= Math.exp(-6 * dt); this.vel.z *= Math.exp(-6 * dt);
     } else if (this.state === 'getup') {
@@ -173,7 +204,7 @@ export class Player {
     this._prevSpeed = sp;
 
     // ---------------------------------------------------------------- flash roll: the roll tapped twice
-    if (!inMenu && input.diveDouble() && (this.state === 'dive' || this.state === 'roll') && this.diveFrom) g.flash?.trigger(this);
+    if (!inMenu && input.diveDouble() && (this.state === 'dive' || this.state === 'roll' || this.state === 'dodge') && this.diveFrom) g.flash?.trigger(this);
 
     // ---------------------------------------------------------------- jump & dive
     this.coyote = this.grounded ? 0.12 : this.coyote - dt;
@@ -197,6 +228,9 @@ export class Player {
         this.vel.y = (4.5 - 1.2 * deep) * (g.gale?.active ? JUMP_UP : 1);
         this.grounded = false; this.coyote = 0;
         this.emit('jump', this.pos.clone(), S);
+      } else if (input.dive() && this.grounded && this.stamina >= 12 && this.dodgeWanted(input)) {
+        this.stamina -= 12; this.staminaDelay = 0.8;
+        this.dodge(mx, mz, deep, S);
       } else if (input.dive() && this.grounded && this.stamina >= 12) {
         this.stamina -= 16; this.staminaDelay = 0.8;
         const dir = new THREE.Vector2(Math.sin(this.heading), Math.cos(this.heading));
@@ -247,6 +281,7 @@ export class Player {
       this.emit('rollEnd', this.pos.clone(), this.heading, 1.5);
     }
     if (this.state === 'dive' && this.stateT > 2.5) this.setState('ground');
+    if (this.state === 'dodge' && ((this.grounded && this.stateT > DODGE_TIME) || this.stateT > 1.2)) this.setState('ground');
 
     this.visualY = this.pos.y;
     this.syncModel(dt);

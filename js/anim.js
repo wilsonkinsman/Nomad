@@ -369,6 +369,26 @@ export class Animator {
       set('upperarm_L', -1.1 * tuck, 0, 0.3); set('upperarm_R', -1.1 * tuck, 0, -0.3);
       set('forearm_L', -1.6 * tuck); set('forearm_R', -1.6 * tuck);
       target = u > 0.85 ? 1 - smoothstep(0.85, 1, u) : 1;
+    } else if (P.state === 'dodge') {
+      // a quick hop back or aside: he springs off one foot, tucks his knees under him in the air with his arms out
+      // for balance, leaning a little into the way he faces (back) or away from the way he goes (aside), and lands
+      // crouched and comes up out of it
+      const D = P.dodgeL || { x: 0, z: -1 }, back = Math.max(0, -D.z), side = D.x;
+      const air = Math.sin(clamp(t / 0.42, 0, 1) * Math.PI), land = smoothstep(0.3, 0.42, t) * (1 - smoothstep(0.42, 0.62, t));
+      target = 1 - smoothstep(0.42, 0.62, t);
+      O.pitch = 0.28 * back * air + 0.15 * land; O.roll = -0.3 * side * air; O.pivotY = 0.95;
+      set('spine', 0.18 * back * air + 0.22 * land, 0, 0.12 * side * air); set('chest', 0.12 * air);
+      set('neck', -0.2 * back * air - 0.1 * land); set('head', -0.15 * back * air);
+      for (const [s, sg] of [['L', 1], ['R', -1]]) {
+        // the leg on the side he goes reaches out to land on; the other is tucked
+        const lead = Math.max(0, sg * -side), spread = sg * (0.1 + 0.35 * lead) * air;
+        set('thigh_' + s, -0.85 * air - 0.6 * land + 0.25 * back * air, 0, spread);
+        set('shin_' + s, 1.3 * air + 1.0 * land);
+        set('foot_' + s, 0.25 * air - 0.35 * land);
+        set('upperarm_' + s, -0.35 * back * air, 0, sg * (0.25 + 0.75 * air));
+        set('forearm_' + s, -0.5 * air);
+      }
+      O.hipsY = -0.13 * land;
     } else if (P.state === 'flop') {
       target = 1;
       O.pitch = 1.42; O.pivotY = 0.2;

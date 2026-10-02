@@ -202,7 +202,7 @@ $('btn-start').onclick = () => {
   const first = !game.started;
   game.started = true; showMenu(false);
   game.audio?.resume(); game.audio?.setVolume(settings.volume);
-  if (first) setTimeout(() => game.hud?.hint('WASD move · Shift sprint · Space jump · C dive · X walk', 7), 1200);
+  if (first) setTimeout(() => game.hud?.hint('WASD move · Shift sprint · Space jump · C dive (with S, A or D: dodge) · X walk', 7), 1200);
 };
 $('btn-night').onclick = () => {
   settings.night = !settings.night; saveSettings(); syncMenu();
@@ -270,6 +270,7 @@ function wireEvents() {
   P.on('roll', impact('roll'));
   P.on('flop', impact('flop'));
   P.on('dive', (p, s) => game.audio?.whoosh());
+  P.on('dodge', (p, s) => { game.audio?.whoosh(); if (s.kind === 'dirt' || s.kind === 'grass') pz.emit('dust', p.x, p.y + 0.05, p.z, 0, 0.5, 0, 0.8, 5); });
   P.on('rollEnd', (p, heading, speed) => game.contact.endImpact(p, heading, speed));
   P.on('jump', (p, s) => game.audio?.step(s, 3, false));
 }
