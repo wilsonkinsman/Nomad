@@ -308,6 +308,7 @@ export class Audio {
       if (kind === 'roar') { this.growl(t, 92, 70, 1.5, 0.55); this.growl(t + 0.05, 140, 100, 1.3, 0.25); }
       else if (kind === 'hurt') this.growl(t, 120, 95, 0.3, 0.3);
       else if (kind === 'die') { this.growl(t, 110, 45, 2.4, 0.5); this.thump(t + 1.5, 50, 0.6, 0.8); }
+      else if (kind === 'summon') { for (let i = 0; i < 3; i++) this.thump(t + i * 0.42, 55, 0.5, 0.7 - i * 0.15); this.growl(t + 1.4, 70, 95, 1.8, 0.35); this.ping(t, 220, 2.5, 0.06); }
       else if (kind === 'step') { this.thump(t, 48, 0.25, 0.45); this.grain(t, 300, 0.7, 0.15, 0.15, 'lowpass'); }
       else if (kind === 'raise') this.sweep(t, 150, 420, 260, 1.5, 0.5, 0.2);
       else if (kind === 'swing') { this.sweep(t, 300, 1100, 300, 0.9, 0.35, 0.45); }

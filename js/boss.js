@@ -1,5 +1,7 @@
 // The red oni (Akaoni) and the ring of stones in the south-east meadow where he waits. Beating him finishes the
-// monk's quest (quests.js), which is worth a skill point; once beaten he is gone for good (admin mode can reset it).
+// monk's quest (quests.js), which is worth a skill point. Once beaten he is gone, until he is called back: a carved
+// totem stands outside the gate, its eyes alight while he is away, and a blow of the sword against it brings him
+// back together out of embers on his stone (there is no second skill point for beating him again).
 //   dormant  he sits on a boulder in the middle of the ring, head bowed. Come within WAKE metres (or hit him) and he
 //            gets up and roars; a bar with his name and life appears.
 //   stalk    he walks at you, turning slowly, and attacks when he can. Each blow is marked in red on the ground first:
@@ -12,6 +14,7 @@
 //   reel     a parried blow, or one very heavy hit, leaves him off balance for REEL s, taking half as much again.
 //   stun     the storm holds him half as long as it would a man, and not again for a few seconds.
 //   dead     he sinks to his knees, falls, and burns away to embers and smoke.
+//   rise     called back by the totem: smoke and embers gather on his stone and he takes shape there, seated.
 // A Gale Slam throws him up (half as high as a man, and not again for a while: updraft.js); he lands staggered.
 // His blows miss anyone up in the air out of reach (the Wind Crow). Leave the ring far behind and he goes back to his
 // stone and his wounds close. He is one of enemies.targets, so every weapon and skill works on him.
@@ -24,6 +27,9 @@ export const ARENA = { x: 55, z: 75, R: 15 };
 const TO_SPAWN = new THREE.Vector2(SPAWN.x - ARENA.x, SPAWN.z - ARENA.z).normalize();
 // the torii, in the gap in the ring that faces the road (top: the height of its roof beam above the ground)
 export const GATE = { x: ARENA.x + TO_SPAWN.x * ARENA.R, z: ARENA.z + TO_SPAWN.y * ARENA.R, top: 4.7 };
+// the totem that calls him back: outside the ring, beside the gate, facing the road
+export const TOTEM = { x: GATE.x + TO_SPAWN.x * 1.8 - TO_SPAWN.y * 3.4, z: GATE.z + TO_SPAWN.y * 1.8 + TO_SPAWN.x * 3.4 };
+const RISE = 3.2;
 
 const MAX_HP = 900, WAKE = 20, LEASH = 42, WALK = 3.0, ENRAGE = 0.4, REEL = 2.2;
 const SMASH = { wind: 0.85, strike: 0.14, recover: 0.95, dmg: 28, reach: 3.0, r: 2.3 };
@@ -72,6 +78,7 @@ export class Boss {
     this.game = game;
     this.buildArena();
     this.buildOni();
+    this.buildTotem();
     this.pos = new THREE.Vector3(); this.heading = 0; this.hp = MAX_HP; this.shown = MAX_HP;
     this.state = 'dormant'; this.t = 0; this.cd = 0; this.leapCd = 0; this.stunCd = 0; this.reelCd = 0; this.away = 0;
     this.enraged = false; this.flash = 0; this.walk = 0; this.phase = 0; this.hit = false; this.from = new THREE.Vector3(); this.to = new THREE.Vector3();
@@ -88,7 +95,7 @@ export class Boss {
     this.reset();
     game.skills.onWipe(() => this.reset());
   }
-  get down() { return this.state === 'dead' || this.state === 'gone'; }
+  get down() { return this.state === 'dead' || this.state === 'gone' || this.state === 'rise'; }
   get awake() { return !this.down && this.state !== 'dormant'; }
 
   // ---------------------------------------------------------------- the ring of stones
@@ -278,6 +285,97 @@ export class Boss {
     this.onDefeat?.();
   }
 
+  // ---------------------------------------------------------------- the totem
+  // A post of old dark wood on a stone, carved with a blue oni's face and over it a red one, horned and fanged,
+  // its eyes set with something that glows; a straw rope round it hung with paper streamers, a hat of wood on top,
+  // and a stone bowl of incense before it. While the oni is gone the eyes burn and the incense smokes.
+  buildTotem() {
+    const G = this.game, { x, z } = TOTEM, y = groundY(x, z), rock = G.tx?.rock;
+    const stone = mat(0x8d877c, { map: rock?.map || null, normalMap: rock?.normal || null, roughness: 0.95, flatShading: true });
+    const wood = mat(0x4e3a2a, { map: G.tx?.wood?.map || null, roughness: 0.9 }), darkW = mat(0x2a1e16, { roughness: 0.9 });
+    const red = mat(0xa8302a, { roughness: 0.6 }), blue = mat(0x2f4a78, { roughness: 0.6 }), bone = mat(0xe6dcc2, { roughness: 0.55 });
+    const black = mat(0x14100e, { roughness: 0.8 }), straw = mat(0xc4ac72, { roughness: 0.95 }), paper = mat(0xf4f0e6, { roughness: 0.9, side: THREE.DoubleSide });
+    this.totemEye = new THREE.MeshStandardMaterial({ color: 0x331a00, emissive: 0xff5a20, emissiveIntensity: 0.2, roughness: 0.4 });
+    const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = Math.atan2(TO_SPAWN.x, TO_SPAWN.y);
+    const add = (geo, m, px = 0, py = 0, pz = 0, rx = 0, ry = 0, rz = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(px, py, pz); o.rotation.set(rx, ry, rz); g.add(o); return o; };
+    add(stoneGeometry(1.0, 0.4, 0.9, 41), stone, 0, -0.15, 0);
+    add(new THREE.CylinderGeometry(0.25, 0.31, 3.5, 12).translate(0, 1.75, 0), wood);
+    for (const h of [0.55, 0.95, 3.25]) add(new THREE.TorusGeometry(0.29, 0.045, 6, 18), darkW, 0, h, 0, Math.PI / 2);
+    // the faces: blue below, red above
+    const face = (y0, m, scale, glow) => {
+      add(new THREE.SphereGeometry(0.36, 16, 12).scale(1, 1.2, 0.78), m, 0, y0, 0.12).scale.setScalar(scale);
+      add(new THREE.BoxGeometry(0.5, 0.09, 0.14), black, 0, y0 + 0.17 * scale, 0.36 * scale, -0.25);
+      for (const s of [-1, 1]) {
+        add(new THREE.SphereGeometry(0.065 * scale, 10, 8), glow ? this.totemEye : bone, s * 0.13 * scale, y0 + 0.08 * scale, 0.37 * scale);
+        add(new THREE.ConeGeometry(0.035 * scale, 0.14 * scale, 6), bone, s * 0.1 * scale, y0 - 0.22 * scale, 0.37 * scale, Math.PI);
+      }
+      add(new THREE.SphereGeometry(0.07 * scale, 8, 6).scale(1.3, 0.8, 1), m, 0, y0 - 0.03 * scale, 0.42 * scale);
+      add(new THREE.BoxGeometry(0.36 * scale, 0.07 * scale, 0.1), black, 0, y0 - 0.18 * scale, 0.36 * scale);
+    };
+    face(1.5, blue, 0.85, false);
+    face(2.7, red, 1.0, true);
+    for (const s of [-1, 1]) add(new THREE.ConeGeometry(0.07, 0.42, 8).translate(0, 0.21, 0), bone, s * 0.2, 3.02, 0.12, 0, 0, -s * 0.45);
+    // the hat, the rope and its streamers, the bowl
+    add(new THREE.ConeGeometry(0.55, 0.32, 10).translate(0, 0.16, 0), darkW, 0, 3.48, 0);
+    add(new THREE.TorusGeometry(0.33, 0.065, 8, 22), straw, 0, 2.08, 0, Math.PI / 2);
+    for (let k = 0; k < 4; k++) {
+      const a = -0.75 + k * 0.5, sh = new THREE.Shape([[0, 0], [0.09, 0], [0.09, -0.1], [0.03, -0.1], [0.03, -0.2], [0.09, -0.2], [0.09, -0.3], [0, -0.3]].map(([u, v]) => new THREE.Vector2(u, v)));
+      add(new THREE.ShapeGeometry(sh), paper, Math.sin(a) * 0.36, 2.04, Math.cos(a) * 0.36, 0, a, 0);
+    }
+    add(new THREE.CylinderGeometry(0.22, 0.14, 0.22, 12).translate(0, 0.11, 0), stone, 0, 0, 0.85);
+    add(new THREE.CylinderGeometry(0.17, 0.17, 0.03, 12), black, 0, 0.21, 0.85);
+    g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    G.scene.add(g);
+    G.player.colliders.push({ x, z, r: 0.5, h: 3.6 });
+    // a red glow about the eyes when it is called on
+    const c = document.createElement('canvas'); c.width = c.height = 64; const cx = c.getContext('2d'), gr = cx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,255,255,0.4)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); cx.fillStyle = gr; cx.fillRect(0, 0, 64, 64);
+    this.totemGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), color: 0xff4a1a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));
+    this.totemGlow.position.set(x, y + 2.8, z); this.totemGlow.scale.setScalar(1.6); G.scene.add(this.totemGlow);
+    const f = new THREE.Vector3(TO_SPAWN.x, 0, TO_SPAWN.y);
+    this.totem = { x, z, y, bowl: new THREE.Vector3(x + f.x * 0.85, y + 0.25, z + f.z * 0.85), flare: 0, told: false, smokeT: 0, struck: false };
+  }
+  // every frame: the totem's eyes burn while he is gone; strike it with the sword and he is called back
+  totemUpdate(dt, G) {
+    const T = this.totem, P = G.player, d = Math.hypot(P.pos.x - T.x, P.pos.z - T.z), ready = this.state === 'gone';
+    T.flare = Math.max(0, T.flare - dt * 0.6);
+    this.totemEye.emissiveIntensity = (ready ? 1.4 + 0.6 * Math.sin(G.time * 2.2) : 0.15) + T.flare * 8;
+    this.totemGlow.material.opacity = (ready ? 0.25 + 0.1 * Math.sin(G.time * 2.2) : 0) + T.flare * 0.9;
+    this.totemGlow.scale.setScalar(1.6 + T.flare * 2.5);
+    if (d > 45) return;
+    // incense while he is away
+    if (ready && (T.smokeT -= dt) <= 0) { T.smokeT = 0.25; G.particles.emit('smoke', T.bowl.x, T.bowl.y, T.bowl.z, 0, 0.5, 0, 0.1, 1); }
+    if (ready && d < 6 && !T.told && G.state === 'play') { T.told = true; G.hud?.hint('The oni totem: strike it with your sword to call the oni back', 5); }
+    if (d > 9) T.told = false;
+    // a blow of the sword against it, while he is gone
+    const W = P.weapon, swing = W && (W.kind === 'draw' || W.kind === 'overhead' || W.kind === 'thrust') && W.t > 0.3 && W.t < 0.62;
+    if (!swing) T.struck = false;
+    else if (!T.struck && d < 2.7) {
+      T.struck = true;
+      if (!ready) { if (this.state === 'dormant') G.hud?.hint('The oni already waits on his stone', 3); return; }
+      T.flare = 1;
+      for (let i = 0; i < 40; i++) { const a = Math.random() * TAU; G.particles.emit('ember', T.x + Math.cos(a) * 0.3, T.y + 2.7, T.z + Math.sin(a) * 0.3, Math.cos(a) * 2, 1 + Math.random() * 2, Math.sin(a) * 2, 0.3, 1); }
+      G.audio?.oni('summon'); G.rig.shake = Math.max(G.rig.shake, 0.5); G.hitStop = Math.max(G.hitStop, 0.08);
+      G.hud?.callout('THE ONI RETURNS', 'red');
+      this.respawn();
+    }
+  }
+  // called back: he gathers again on his stone out of smoke and embers, seated, and wakes when anyone is near
+  respawn() {
+    if (this.state !== 'gone') return false;
+    for (const m of this.mats) { m.transparent = true; m.opacity = 0; m.depthWrite = true; m.needsUpdate = true; }
+    this.clearMarkers();
+    this.hp = this.shown = MAX_HP; this.enraged = false; this.flash = 0; this.cd = 1; this.leapCd = 2; this.away = 0;
+    this.target.air = false; this.target.lift = 0; this.target.spin = 0; this.target.tilt = 0;
+    this.eyeM.emissive.setHex(0xffc040);
+    this.root.visible = true; this.root.rotation.set(0, 0, 0);
+    this.pos.set(ARENA.x, 0, ARENA.z); this.pos.y = groundY(this.pos.x, this.pos.z);
+    this.heading = Math.atan2(TO_SPAWN.x, TO_SPAWN.y);
+    sitPose(this.pose); sitPose(this.goal);
+    this.setState('rise');
+    return true;
+  }
+
   // ---------------------------------------------------------------- red marks on the ground
   // a ring from r0 to r1 round (x, z), or an arc of it from angle a0 to a1 (radians, as the RingGeometry counts
   // them), laid over the shape of the ground; it pulses until `life`, then fades
@@ -338,6 +436,7 @@ export class Boss {
 
   update(dt, G) {
     this.updateMarkers(dt);
+    this.totemUpdate(dt, G);
     if (this.state === 'gone') return;
     if (this.target.air) { this.airborne(dt, G); return; }
     const P = G.player, t = (this.t += dt);
@@ -356,6 +455,22 @@ export class Boss {
       if (this.away > 3) { this.clearMarkers(); this.setState('return'); this.showBar(false); G.hud?.hint('The oni goes back to his stone, and his wounds close', 3); }
     }
     switch (this.state) {
+      case 'rise': {
+        // smoke and embers drawn in to the stone, and him taking shape among them
+        sitPose(goal); rate = 4;
+        const k = smoothstep(0.4, RISE - 0.4, t);
+        for (const m of this.mats) m.opacity = k;
+        if (t < RISE - 0.3) for (let i = 0; i < 3; i++) {
+          const a = Math.random() * TAU, r = 2.5 * (1 - k) + 0.6, h = Math.random() * 2.6;
+          G.particles.emit(i ? 'ember' : 'smoke', this.pos.x + Math.cos(a) * r, this.pos.y + h, this.pos.z + Math.sin(a) * r, -Math.cos(a) * r * 0.8, 0.3, -Math.sin(a) * r * 0.8, 0.3, 1);
+        }
+        if (t >= RISE) {
+          for (const m of this.mats) { m.transparent = false; m.opacity = 1; m.needsUpdate = true; }
+          for (let i = 0; i < 30; i++) { const a = Math.random() * TAU; G.particles.emit('ember', this.pos.x, this.pos.y + 1.2, this.pos.z, Math.cos(a) * 3, 1 + Math.random() * 2, Math.sin(a) * 3, 0.8, 1); }
+          this.setState('dormant');
+        }
+        break;
+      }
       case 'dormant':
         sitPose(goal); rate = 4;
         if (fromArena < WAKE) this.wake();
