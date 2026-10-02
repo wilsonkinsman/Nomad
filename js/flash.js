@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 import { groundY, PLAY_RADIUS } from './world.js';
 import { clamp, smoothstep } from './util.js';
+import { inside } from './collide.js';
 
 const OUT = 0.15, HOLD = 0.06, IN = 0.26, COOLDOWN = 1.4;
 const GRAV = 13, ROLL_DRAG = 1.6;
@@ -42,7 +43,7 @@ export class Flash {
     return new THREE.Vector3(x, groundY(x, z), z);
   }
   blocked(P, x, z) {
-    for (const c of P.colliders) { const dx = x - c.x, dz = z - c.z, r = c.r + 0.34; if (dx * dx + dz * dz < r * r) return true; }
+    for (const c of P.colliders) if (inside(c, x, z, 0.34)) return true;
     return false;
   }
 

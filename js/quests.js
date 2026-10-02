@@ -42,6 +42,7 @@ export class Quests {
     this.box = document.getElementById('quest'); this.boxTitle = document.getElementById('quest-title'); this.boxGoal = document.getElementById('quest-goal');
     this.monkMark = game.hud.addMark('!', 'quest');
     for (const q of QUESTS) q.cmark = game.hud.addMark(q.mark, 'oni');
+    this.monkWho = { name: 'The old monk', x: MONK.x, z: MONK.z };
     this.talk = null; this.cool = 0; this.played = 0; this.nudged = false; this.doneT = 0; this.pending = [];
     game.boss.onDefeat = () => this.complete('oni');
     game.skills.onWipe(() => { this.taken.clear(); this.save(); this.close(); this.pending.length = 0; this.doneT = 0; this.nudged = false; this.played = 0; });
@@ -79,12 +80,13 @@ export class Quests {
     G.player.colliders.push({ x: MONK.x, z: MONK.z, r: 0.45, h: 2 });
   }
 
-  // he talks: lines one after another; then() runs when the line at `at` comes up
-  say(lines, then, at = 0) { this.talk = { lines, i: -1, t: 0, then, at }; this.next(); }
+  // someone talks (the monk, unless `who` says otherwise: { name, x, z }): lines one after another; then() runs when
+  // the line at `at` comes up; walking away from them ends it
+  say(lines, then, at = 0, who = this.monkWho) { this.talk = { lines, i: -1, t: 0, then, at, who }; this.next(); }
   next() {
     const k = this.talk; k.i++; k.t = 0;
     if (k.i >= k.lines.length) { this.close(); return; }
-    this.dlgName.textContent = 'The old monk'; this.dlgText.textContent = k.lines[k.i];
+    this.dlgName.textContent = k.who.name; this.dlgText.textContent = k.lines[k.i];
     this.dlg.hidden = false; this.dlg.classList.remove('in'); void this.dlg.offsetWidth; this.dlg.classList.add('in');
     if (k.then && k.i === k.at) { const f = k.then; k.then = null; f(); }
   }
@@ -121,7 +123,7 @@ export class Quests {
     }
     if (this.talk && G.state === 'play') {
       this.talk.t += dt;
-      if (d > TALK + 5) this.close();
+      if (Math.hypot(this.talk.who.x - P.pos.x, this.talk.who.z - P.pos.z) > TALK + 5) this.close();
       else if (this.talk.t > LINE) this.next();
     }
     // a nudge toward him at the start, once

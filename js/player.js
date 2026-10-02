@@ -8,6 +8,7 @@ import { Animator } from './anim.js';
 import { Weapon } from './sword.js';
 import { clamp, damp, dampAngle, wrapAngle } from './util.js';
 import { SPEED_UP, JUMP_UP } from './gale.js';
+import { pushOut } from './collide.js';
 
 const GRAV = -13;
 
@@ -254,6 +255,15 @@ export class Player {
   collide() {
     for (const c of this.colliders) {
       if (c.soft && (this.state === 'tackle' || this.state === 'crow')) continue;        // he runs (or is carried) through what can be knocked about
+      if (c.box) {
+        // a house: he is put back out through the nearer wall (unless he is up over its roof)
+        const o = pushOut(c, this.pos.x, this.pos.z, 0.28);
+        if (!o || this.pos.y > groundY(c.x, c.z) + c.h) continue;
+        this.pos.x += o.x; this.pos.z += o.z;
+        const vn = this.vel.x * o.nx + this.vel.z * o.nz;
+        if (vn < 0) { this.vel.x -= vn * o.nx; this.vel.z -= vn * o.nz; }
+        continue;
+      }
       const dx = this.pos.x - c.x, dz = this.pos.z - c.z, r = c.r + 0.28;
       const d2 = dx * dx + dz * dz;
       if (d2 < r * r && d2 > 1e-8) {

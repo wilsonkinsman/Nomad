@@ -73,6 +73,10 @@ export class Audio {
         this.grain(t, 1300, 0.9, 0.16, 0.3 * k); this.thump(t, 420, 0.09, 0.12 * k);
         for (let i = 0; i < 5; i++) this.grain(t + 0.03 + R() * 0.12, 2500 + R() * 2500, 4, 0.02, 0.08 * k);
         break;
+      case 'stone':                                   // cobbles: a hard, short knock and a scuff of grit
+        this.thump(t, 170, 0.04, 0.22 * k); this.grain(t, 2600, 1.4, 0.03, 0.14 * k);
+        for (let i = 0; i < 3; i++) this.grain(t + 0.01 + R() * 0.05, 4200 + R() * 2500, 3, 0.01, 0.07 * k);
+        break;
       case 'dirt':
         this.thump(t, 110, 0.07, 0.25 * k);
         for (let i = 0; i < 4; i++) this.grain(t + R() * 0.05, 1800 + R() * 1800, 2, 0.015, 0.12 * k);
@@ -81,6 +85,23 @@ export class Audio {
         this.thump(t, 95, 0.06, 0.18 * k);
         this.grain(t, 3200, 0.8, 0.1, 0.1 * k);
     }
+  }
+
+  // the smith's hammer on the anvil (k: how loud, by how near)
+  anvil(k = 1) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + 0.005;
+    this.grain(t, 3000, 1, 0.04, 0.16 * k); this.thump(t, 240, 0.05, 0.12 * k);
+    this.ping(t, 1650 + Math.random() * 40, 0.8, 0.06 * k); this.ping(t, 2490, 0.55, 0.035 * k); this.ping(t, 3920, 0.35, 0.02 * k);
+  }
+  // the cat, put out
+  meow() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime + 0.01, o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(520, t); o.frequency.linearRampToValueAtTime(820, t + 0.12); o.frequency.exponentialRampToValueAtTime(430, t + 0.45);
+    f.type = 'bandpass'; f.frequency.setValueAtTime(900, t); f.frequency.linearRampToValueAtTime(1800, t + 0.15); f.frequency.linearRampToValueAtTime(700, t + 0.45); f.Q.value = 3;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.06, t + 0.05); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    o.connect(f).connect(g).connect(this.master); o.start(t); o.stop(t + 0.55);
   }
 
   // a band of noise whose pitch rises then falls: swishes, steel sliding on steel

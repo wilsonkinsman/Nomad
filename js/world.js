@@ -26,6 +26,17 @@ export const PATHS = [
 
 export const SPAWN = { x: -24, z: 10.5 };
 
+// the village of Brackenford, on the level ground south of the road east of the crossroads: inside [x0, x1] by
+// [z0, z1] it is built on (no trees, no rocks), and the land round it is levelled to a gentle plane that leans
+// down to the south-west, as the land there does anyway
+export const VILLAGE = { x: 48, z: 21, x0: 25, x1: 72, z0: 1, z1: 41 };
+export const inVillage = (x, z, pad = 0) => x > VILLAGE.x0 - pad && x < VILLAGE.x1 + pad && z > VILLAGE.z0 - pad && z < VILLAGE.z1 + pad;
+const villageY = (x, z) => 0.2 + (x - VILLAGE.x) * 0.006 - (z - VILLAGE.z) * 0.012;
+function villageK(x, z) {
+  const dx = Math.max(0, Math.abs(x - VILLAGE.x) - 23), dz = Math.max(0, Math.abs(z - VILLAGE.z) - 20);
+  return 1 - smoothstep(0, 9, Math.hypot(dx, dz));
+}
+
 function ellipseE(z, x, zz) {
   const dx = x - z.cx, dz = zz - z.cz;
   const c = Math.cos(z.rot), s = Math.sin(z.rot);
@@ -123,6 +134,9 @@ export function bake(onProgress) {
       const p = pathFieldAt(x, z);
       // paths are worn a little into the ground and follow the smoother landform
       H[j * HRES + i] = lerp(h, low, p * 0.85) - 0.13 * p;
+      // the village's ground: levelled, with only a little give left in it
+      const vk = villageK(x, z);
+      if (vk > 0) H[j * HRES + i] = lerp(H[j * HRES + i], villageY(x, z) + (vnoise(x * 0.3, z * 0.3) - 0.5) * 0.06 - 0.05 * p, vk);
     }
   }
   onProgress?.(0.5);
@@ -165,13 +179,19 @@ function sample4(arr, x, z, out) {
   return out;
 }
 
+// the village's cobbles: how paved (x, z) is, 0..1 (set by the village once it has laid them)
+let paving = null;
+export function setPaving(fn) { paving = fn; }
+
 const _z = [0, 0, 0, 0], _p = [0, 0, 0, 0];
 export function surfaceAt(x, z, out = {}) {
   sample4(Z, x, z, _z); sample4(P, x, z, _p);
   out.grass = _z[0]; out.wheat = _z[1]; out.leaves = _z[2]; out.snow = _z[3];
   out.path = _p[0]; out.puddle = _p[1]; out.snowDepth = _p[2] * 0.5; out.dry = _p[3];
+  out.paved = paving && inVillage(x, z, 4) ? paving(x, z) : 0;
   let best = 'grass', bw = out.grass * (1 - out.path);
   if (out.path > 0.5 && out.snow < 0.4) { best = out.puddle > 0.4 ? 'puddle' : 'dirt'; bw = 2; }
+  if (out.paved > 0.5) { best = 'stone'; bw = 2; }
   if (out.wheat > bw) { best = 'wheat'; bw = out.wheat; }
   if (out.leaves > bw) { best = 'leaves'; bw = out.leaves; }
   if (out.snow > Math.max(0.35, bw * 0.8)) { best = 'snow'; }

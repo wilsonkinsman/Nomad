@@ -161,6 +161,9 @@ input[type=range] { accent-color: var(--gold); width: 150px; }
 .fl.gold { color: var(--gold); }
 .fl.word { font-size: 24px; letter-spacing: 0.12em; font-style: italic; }
 .fl.zap { color: #a9c8ff; text-shadow: 0 2px 0 #000, 0 0 14px #4a7cff; }
+/* what the villagers say, in a bubble over their heads */
+.bubble { position: absolute; left: 0; top: 0; max-width: 220px; padding: 6px 11px 7px; background: rgba(246,240,226,0.94); color: #2a2018; font-family: var(--serif); font-size: 15px; line-height: 1.25; text-align: center; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.35); white-space: normal; width: max-content; transform-origin: 50% 100%; will-change: transform; }
+.bubble::after { content: ''; position: absolute; left: 50%; bottom: -7px; margin-left: -7px; border: 7px solid transparent; border-bottom: 0; border-top-color: rgba(246,240,226,0.94); }
 #callout { position: fixed; left: 50%; top: 34%; white-space: nowrap; transform: translateX(-50%); z-index: 12; pointer-events: none; font-family: var(--serif); font-weight: 600; font-size: 54px; letter-spacing: 0.3em; padding-left: 0.3em; opacity: 0; text-shadow: 0 2px 0 #000, 0 0 24px rgba(0,0,0,0.6); }
 #callout.show { animation: callout 0.9s ease-out forwards; }
 #callout.gold { color: var(--gold); }

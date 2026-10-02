@@ -16,6 +16,7 @@ import { groundY, PLAY_RADIUS } from './world.js';
 import { smoothstep, dampAngle } from './util.js';
 import { STUN } from './storm.js';
 import { CatCloak } from './catcloak.js';
+import { inside } from './collide.js';
 
 export const GATHER = 0.42, DASH = 0.16, CLAW = 0.5, RISE = 0.35;
 export const DOWN = GATHER, RUN = DASH, UP = GATHER + DASH + CLAW, TOTAL = UP + RISE;     // the names the animator reads
@@ -80,7 +81,7 @@ export class Tackle {
     for (let s = 0.25; s <= want + 1e-6; s += 0.25) {
       const x = P.pos.x + this.dir.x * s, z = P.pos.z + this.dir.y * s;
       let hard = Math.hypot(x, z) > PLAY_RADIUS - 0.5;
-      for (const c of P.colliders) { if (c.soft) continue; const dx = x - c.x, dz = z - c.z, r = c.r + 0.34; if (dx * dx + dz * dz < r * r) { hard = true; if (c.wall) this.wall = c.wall; break; } }
+      for (const c of P.colliders) { if (c.soft) continue; if (inside(c, x, z, 0.34)) { hard = true; if (c.wall) this.wall = c.wall; break; } }
       if (hard) { this.blocked = true; break; }
       d = s;
     }

@@ -25,6 +25,7 @@ import { groundY, surfaceAt, PLAY_RADIUS } from './world.js';
 import { clamp, lerp, smoothstep, damp, dampAngle, wrapAngle } from './util.js';
 import { WindCrow, NOISE } from './windcrow.js';
 import { Streak } from './gale.js';
+import { inside, normalAt, struck } from './collide.js';
 
 export const SUMMON = 0.7, THROW = 0.46;
 const RELEASE = 0.14;                                         // seconds into the throw that he lets go
@@ -186,6 +187,11 @@ export class CrowFlight {
       if (mx * mx + mz * mz > near * near) continue;
       const top = c.wall ? c.wall.top : groundY(c.x, c.z) + (c.h ?? 2.5);
       if (y > top) continue;
+      if (c.box) {
+        // a house: going in through one of its walls
+        if (!inside(c, x0, z0, 0.4)) for (let i = 1; i <= n; i++) if (inside(c, x0 + (x1 - x0) * i / n, z0 + (z1 - z0) * i / n, 0.4)) return c;
+        continue;
+      }
       const r = c.r + 0.4, d0 = Math.hypot(x0 - c.x, z0 - c.z);
       for (let i = 1; i <= n; i++) {
         const dx = x0 + (x1 - x0) * i / n - c.x, dz = z0 + (z1 - z0) * i / n - c.z, d = Math.hypot(dx, dz);
@@ -196,12 +202,13 @@ export class CrowFlight {
   }
   // struck: the way into it is taken out of the flight, the crow loses feathers and half its speed
   bump(P, c) {
-    const G = this.game, ex = P.pos.x - c.x, ez = P.pos.z - c.z, el = Math.hypot(ex, ez) || 1, nx = ex / el, nz = ez / el;
+    const G = this.game, ex = P.pos.x - c.x, ez = P.pos.z - c.z, el = Math.hypot(ex, ez) || 1;
+    const [nx, nz] = c.box ? normalAt(c, P.pos.x, P.pos.z) : [ex / el, ez / el];
     const vn = this.dir.x * nx + this.dir.z * nz;
     if (vn < 0) { this.dir.x -= 1.7 * vn * nx; this.dir.z -= 1.7 * vn * nz; this.dir.normalize(); }
     this.speed = Math.max(VMIN, this.speed * 0.55);
     this.thetaV -= 3; this.phiV += (Math.random() - 0.5) * 4;
-    const x = c.x + nx * c.r, z = c.z + nz * c.r, y = P.pos.y + this.hang * 0.6;
+    const x = c.box ? P.pos.x - nx * 0.4 : c.x + nx * c.r, z = c.box ? P.pos.z - nz * 0.4 : c.z + nz * c.r, y = P.pos.y + this.hang * 0.6;
     c.wall?.jolt(x, y, z);
     for (let i = 0; i < 14; i++) G.particles.emit('feather', x, y, z, nx * 3 + (Math.random() - 0.5) * 3, Math.random() * 2, nz * 3 + (Math.random() - 0.5) * 3, 1, 1);
     G.particles.emit('dust', x, y, z, nx * 2, 0.5, nz * 2, 1, 8);
@@ -432,6 +439,7 @@ export class CrowFlight {
       if (Math.hypot(p.x - c.x, p.z - c.z) < c.r + 0.45 && p.y > cy - 0.2 && p.y < cy + (c.y1 || 1.9) + 0.3) return c;
     }
     if (G.earth?.blockArrow(p)) return 'wall';
+    for (const c of G.village?.colliders || []) if (struck(c, p.x, p.y, p.z, 0.3)) return 'tree';
     for (const L of [G.trees?.colliders, G.props?.colliders]) if (L) for (const c of L) {
       if (c.bush) continue;
       const dx = p.x - c.x, dz = p.z - c.z, r = c.r + 0.3;

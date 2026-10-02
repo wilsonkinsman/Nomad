@@ -19,6 +19,7 @@ import * as THREE from 'three';
 import { groundY } from './world.js';
 import { clamp, smoothstep } from './util.js';
 import { mergeVertices } from '../lib/utils/BufferGeometryUtils.js';
+import { struck } from './collide.js';
 
 export const DURATION = 40, COOLDOWN = 10, CAGE = 6, WALL_LIFE = 10, WALL_COOL = 1.5;
 export const KICK_TIME = 1.05;                       // the whole Rock Kick, stomp to standing
@@ -389,6 +390,7 @@ export class Earth {
         if (done) break;
         const w = this.blockArrow(p);
         if (w) { w.jolt(p.x, p.y, p.z); this.shatter(r, p.x, p.y, p.z); done = true; break; }
+        for (const c of G.village?.colliders || []) if (!done && struck(c, p.x, p.y, p.z, r.r)) { this.shatter(r, p.x, p.y, p.z); done = true; }
         for (const L of [G.trees?.colliders, G.props?.colliders]) if (L && !done) for (const c of L) {
           const dx = p.x - c.x, dz = p.z - c.z, rr = c.r + r.r;
           if (dx * dx + dz * dz < rr * rr && p.y < gy + 3) { this.shatter(r, p.x, p.y, p.z); done = true; break; }

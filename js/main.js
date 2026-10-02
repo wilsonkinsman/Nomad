@@ -35,6 +35,8 @@ import { Boss } from './boss.js';
 import { Fairies } from './fairies.js';
 import { Quests } from './quests.js';
 import { Updraft } from './updraft.js';
+import { Village } from './village.js';
+import { Villagers } from './villagers.js';
 
 const QUALITY = {
   low:    { ratio: 0.6,  msaa: 0, shadow: 1024, veg: 0.5 },
@@ -126,6 +128,10 @@ async function boot() {
   game.player.colliders = [...game.trees.colliders, ...game.props.colliders];
   game.audio = new Audio(); game.audio.volume = settings.volume;
   game.hud = new Hud(game);
+  await progress(0.92, 'Building Brackenford…');
+  game.village = new Village(game);        // the village: its houses stand in the way of him, his arrows and the camera
+  game.player.colliders.push(...game.village.colliders);
+  rig.blockers = game.village.blockers;
   game.fireflies = new Fireflies(game, softSprite());
   game.contact = new BodyContact(game);
   game.skills = new Skills();
@@ -142,8 +148,9 @@ async function boot() {
   game.fairies = new Fairies(game);
   game.quests = new Quests(game);
   game.updraft = new Updraft(game);        // the Gale Slam's whirlwind
-  game.systems.push(game.grass, game.wheat, game.snow, game.leaves, game.props, game.particles, game.fireflies, game.hud, game.audio);
-  game.systems.push(game.flash, game.enemies, game.bow, game.storm, game.tackle, game.earth, game.gale, game.crow, game.boss, game.fairies, game.quests, game.updraft);
+  game.villagers = new Villagers(game);    // the people of the village (after the quests: the keepers talk through its dialog box)
+  game.systems.push(game.grass, game.wheat, game.snow, game.leaves, game.props, game.village, game.particles, game.fireflies, game.hud, game.audio);
+  game.systems.push(game.flash, game.enemies, game.bow, game.storm, game.tackle, game.earth, game.gale, game.crow, game.boss, game.fairies, game.quests, game.updraft, game.villagers);
   game.systems.unshift(game.contact);    // body hitboxes stamp before the snow and leaves update
   wireEvents();
   game.sky.setNight(settings.night);

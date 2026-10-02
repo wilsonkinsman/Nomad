@@ -1,9 +1,11 @@
 // Third-person camera: over-the-shoulder spring arm with lag, terrain avoidance, a slow pull-back
 // and wider lens while running, a lens that widens with speed while the Wind Crow carries him,
-// plus a slow cinematic orbit for the title screen.
+// plus a slow cinematic orbit for the title screen. Walls (the village's houses, in `blockers`) bring the lens in
+// in front of them, so he is never seen through one.
 import * as THREE from 'three';
 import { groundY } from './world.js';
 import { clamp, damp, smoothstep } from './util.js';
+import { enters } from './collide.js';
 
 export class CameraRig {
   constructor(camera) {
@@ -18,6 +20,8 @@ export class CameraRig {
     this.blend = 0;           // 0 = menu orbit, 1 = gameplay
     this._pos = new THREE.Vector3();
     this._look = new THREE.Vector3();
+    this.blockers = [];       // boxes the lens may not pass behind
+    this.reach = 1;           // how much of the arm is clear of them (eases back out, snaps in)
   }
 
   update(dt, player, input, inMenu) {
@@ -84,6 +88,19 @@ export class CameraRig {
       const y = THREE.MathUtils.lerp(this._look.y, this._pos.y, t);
       if (y < minY) this._pos.y += (minY - y) / t;
     }
+    // and in front of any wall between him and the lens
+    let reach = 1;
+    const L = this._look, Q = this._pos, len = Math.hypot(Q.x - L.x, Q.z - L.z) + 1e-6;
+    for (const c of this.blockers) {
+      const mx = (L.x + Q.x) / 2 - c.x, mz = (L.z + Q.z) / 2 - c.z, near = c.r + len / 2 + 0.5;
+      if (mx * mx + mz * mz > near * near) continue;
+      const t = enters(c, L.x, L.z, Q.x, Q.z, 0.3);
+      if (t >= reach) continue;
+      if (L.y + (Q.y - L.y) * t > groundY(c.x, c.z) + c.h) continue;       // over the roof
+      reach = Math.max(0.08, t - 0.1 / len);
+    }
+    this.reach = reach < this.reach ? reach : damp(this.reach, reach, 2.5, dt);
+    if (this.reach < 0.999) this._pos.lerpVectors(L, Q, this.reach);
 
     cam.position.copy(this._pos);
     if (this.shake > 0) {

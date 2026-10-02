@@ -12,6 +12,7 @@ import * as THREE from 'three';
 import { groundY } from './world.js';
 import { clamp, damp, dampAngle, wrapAngle } from './util.js';
 import { ThunderArrows, SUPER_TIME } from './thunderarrow.js';
+import { struck } from './collide.js';
 
 const CHARGE_TIME = 1.1, MIN_DRAW = 0.14, GRAVITY = 9.5;
 const LIMB = 0.4, SAG = 0.14;                       // half the bow's height; how far its tips curve toward the archer
@@ -250,6 +251,8 @@ export class Bow {
         for (let k = 0; k < 8; k++) G.particles.emit('spark', a.pos.x, a.pos.y, a.pos.z, -a.vel.x * 0.05 + (Math.random() - 0.5) * 3, Math.random() * 2, -a.vel.z * 0.05 + (Math.random() - 0.5) * 3, 0.3, 1);
         return false;
       }
+      // the village's walls and roofs
+      for (const c of G.village?.colliders || []) if (struck(c, a.pos.x, a.pos.y, a.pos.z)) { this.stick(a, null); return true; }
       // trees, rocks, posts
       for (const L of [G.trees?.colliders, G.props?.colliders]) if (L) for (const c of L) {
         const dx = a.pos.x - c.x, dz = a.pos.z - c.z;

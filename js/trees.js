@@ -4,7 +4,7 @@
 // tree in the wheat, and snow-laden pines on the rise.
 import * as THREE from 'three';
 import { mergeGeometries } from '../lib/utils/BufferGeometryUtils.js';
-import { groundY, surfaceAt, ZONES, SPAWN } from './world.js';
+import { groundY, surfaceAt, ZONES, SPAWN, inVillage } from './world.js';
 import { GLSL_WIND } from './wind.js';
 import { addTranslucency } from './grass.js';
 import { mulberry32, GLSL_NOISE } from './util.js';
@@ -153,6 +153,10 @@ export class Trees {
       if (s.path < 0.2 && s.grass > 0.5) this.list.push({ x, z, kind: 'bush', rot: rnd() * 6, s: 0.7 + rnd() * 0.5 });
     }
 
+    // the village has been built where these stood (they are still placed, so that everything placed after them
+    // stays where it was, but never grown)
+    for (const t of this.list) t.gone = inVillage(t.x, t.z, 1);
+
     // materials
     const barkM = new THREE.MeshStandardMaterial({ map: tx.bark.map, normalMap: tx.bark.normal, roughness: 0.95 });
     const birchM = new THREE.MeshStandardMaterial({ map: tx.birch.map, normalMap: tx.birch.normal, roughness: 0.8 });
@@ -215,6 +219,7 @@ export class Trees {
         const V = variants[kind][v];
         V.bark.computeBoundingSphere(); V.leaves.computeBoundingSphere();
         mine.forEach((t, i) => {
+          if (t.gone) return;
           const y = groundY(t.x, t.z);
           const bm = new THREE.Mesh(V.bark, kind === 'birch' ? birchM : barkSnowM);
           const lm = new THREE.Mesh(V.leaves, tintedLeaf(kind === 'pine' ? pineM : leafM, kind));
@@ -232,5 +237,6 @@ export class Trees {
     }
     game.scene.add(group);
     this.group = group;
+    this.list = this.list.filter((t) => !t.gone);
   }
 }
