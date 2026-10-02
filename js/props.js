@@ -62,7 +62,7 @@ export class Props {
       surfaceAt(x, z, s);
       if (s.path > 0.15 || s.wheat > 0.4) continue;
       const big = rnd() < 0.18;
-      spots.push({ x, z, r: big ? 0.9 + rnd() * 1.4 : 0.2 + rnd() * 0.45, v: (rnd() * 4) | 0, moss: s.grass + s.leaves * 0.5, snow: s.snow });
+      spots.push({ x, z, r: big ? 0.9 + rnd() * 1.4 : 0.2 + rnd() * 0.45, v: (rnd() * 4) | 0, moss: s.grass + s.leaves * 0.5 + s.forest * 0.6, snow: s.snow });
     }
     const byV = [[], [], [], []];
     for (const sp of spots) byV[sp.v].push(sp);

@@ -1,5 +1,5 @@
-// The plain itself: heights, the four ground zones (grass, wheat, leaves, snow), the dirt paths,
-// puddles and snow depth. Everything is baked once into typed arrays so the CPU (physics,
+// The plain itself: heights, the five ground zones (grass, wheat, leaves, snow, the deep forest), the
+// dirt paths, puddles and snow depth. Everything is baked once into typed arrays so the CPU (physics,
 // footsteps, placement) and the GPU (terrain, grass, wheat shaders) read exactly the same data.
 import * as THREE from 'three';
 import { clamp, lerp, smoothstep, fbm, ridge, vnoise, smoothPath } from './util.js';
@@ -16,17 +16,26 @@ export const ZONES = {
   wheat:  { cx: 52,  cz: -38, rx: 42, rz: 31, rot: 0.25 },
   leaves: { cx: -50, cz: -40, rx: 38, rz: 34, rot: -0.3 },
   snow:   { cx: -46, cz: 58,  rx: 46, rz: 40, rot: 0.4 },
+  forest: { cx: 60,  cz: 72,  rx: 48, rz: 42, rot: 0.3 },     // the deep wood, south-east, off the road
 };
+
+// Openings in the canopy of the deep wood: the sun and the moon reach the floor here, ferns crowd in
+export const GLADES = [
+  { x: 72, z: 52, r: 9 }, { x: 46, z: 74, r: 11 }, { x: 78, z: 96, r: 9 }, { x: 36, z: 56, r: 7 },
+];
 
 export const PATHS = [
   smoothPath([[-160, 36], [-110, 27], [-66, 17], [-30, 11], [0, 5], [30, -1], [62, -2], [96, -10], [160, -20]], 10),
   smoothPath([[0, 5], [-7, -14], [-22, -33], [-38, -52], [-50, -78], [-58, -112]], 10),
   smoothPath([[-30, 11], [-34, 28], [-41, 46], [-49, 66], [-58, 92], [-66, 124]], 10),
+  // the trail into the deep wood, off the road out east
+  smoothPath([[64, -2], [68, 14], [66, 30], [62, 46], [58, 60], [60, 76], [66, 92], [72, 110]], 10),
 ];
 
 export const SPAWN = { x: -24, z: 10.5 };
 
-function ellipseE(z, x, zz) {
+// how far (x, zz) is from a zone's centre in units of its radius: 1 is the rim of the ellipse
+export function ellipseE(z, x, zz) {
   const dx = x - z.cx, dz = zz - z.cz;
   const c = Math.cos(z.rot), s = Math.sin(z.rot);
   const lx = dx * c - dz * s, lz = dx * s + dz * c;
@@ -62,6 +71,7 @@ function rawHeight(x, z) {
 export const H = new Float32Array(HRES * HRES);
 export const Z = new Uint8Array(ZRES * ZRES * 4);   // grass, wheat, leaves, snow
 export const P = new Uint8Array(ZRES * ZRES * 4);   // path, puddle, snow depth, dryness
+export const Z2 = new Uint8Array(ZRES * ZRES * 4);  // deep wood, canopy opening, ferns, moss
 let pathField = null;                                // float distance-ish mask at ZRES
 
 function bakePathField() {
@@ -102,16 +112,26 @@ function zonesRaw(x, z) {
   const wheat = zoneWeight(ZONES.wheat, x, z, 11.3);
   const leaves = zoneWeight(ZONES.leaves, x, z, 4.7);
   const snowZ = zoneWeight(ZONES.snow, x, z, 8.9);
+  const forest = zoneWeight(ZONES.forest, x, z, 14.1);
   // snow gets patchy at its edge: drifts linger in hollows
   const patch = fbm(x * 0.08 + 2, z * 0.08 - 5, 3);
   const snow = clamp(snowZ * 1.35 - (1 - snowZ) * 0.2 + (patch - 0.5) * 0.9 * (1 - snowZ) * snowZ * 4, 0, 1);
   let path = pathFieldAt(x, z) * (1 - smoothstep(0.35, 0.75, snow));
-  const other = Math.max(wheat, leaves, snow);
+  const other = Math.max(wheat, leaves, snow, forest);
   const grass = clamp(1 - other, 0, 1);
   const puddle = path > 0.55 ? smoothstep(0.6, 0.72, fbm(x * 0.21 + 9, z * 0.21 - 3, 3)) * smoothstep(0.55, 0.9, path) : 0;
   const snowDepth = smoothstep(0.25, 0.85, snow) * (0.36 + 0.14 * fbm(x * 0.05, z * 0.05, 2));
   const dry = fbm(x * 0.03 - 4, z * 0.03 + 8, 3);
-  return { grass, wheat, leaves, snow, path, puddle, snowDepth, dry };
+  // the deep wood: openings in the canopy, where the ferns and the light are, and patches of moss
+  let glade = 0;
+  for (const g of GLADES) {
+    const d = Math.hypot(x - g.x, z - g.z) + (fbm(x * 0.09 + g.x, z * 0.09 - g.z, 2) - 0.5) * g.r * 0.7;
+    glade = Math.max(glade, 1 - smoothstep(g.r * 0.5, g.r, d));
+  }
+  glade *= forest;
+  const fern = clamp(forest * (0.25 + 0.75 * smoothstep(0.35, 0.7, fbm(x * 0.06 + 31, z * 0.06 - 17, 3))) + glade * 0.7, 0, 1);
+  const moss = smoothstep(0.38, 0.72, fbm(x * 0.09 - 7, z * 0.09 + 13, 3)) * forest;
+  return { grass, wheat, leaves, snow, path, puddle, snowDepth, dry, forest, glade, fern, moss };
 }
 
 export function bake(onProgress) {
@@ -133,6 +153,7 @@ export function bake(onProgress) {
       const r = zonesRaw(x, z), k = (j * ZRES + i) * 4;
       Z[k] = r.grass * 255; Z[k + 1] = r.wheat * 255; Z[k + 2] = r.leaves * 255; Z[k + 3] = r.snow * 255;
       P[k] = r.path * 255; P[k + 1] = r.puddle * 255; P[k + 2] = clamp(r.snowDepth / 0.5, 0, 1) * 255; P[k + 3] = r.dry * 255;
+      Z2[k] = r.forest * 255; Z2[k + 1] = r.glade * 255; Z2[k + 2] = r.fern * 255; Z2[k + 3] = r.moss * 255;
     }
   }
   onProgress?.(1);
@@ -165,15 +186,21 @@ function sample4(arr, x, z, out) {
   return out;
 }
 
-const _z = [0, 0, 0, 0], _p = [0, 0, 0, 0];
+const _z = [0, 0, 0, 0], _p = [0, 0, 0, 0], _z2 = [0, 0, 0, 0];
 export function surfaceAt(x, z, out = {}) {
-  sample4(Z, x, z, _z); sample4(P, x, z, _p);
-  out.grass = _z[0]; out.wheat = _z[1]; out.leaves = _z[2]; out.snow = _z[3];
+  sample4(Z, x, z, _z); sample4(P, x, z, _p); sample4(Z2, x, z, _z2);
+  out.grass = _z[0]; out.wheat = _z[1]; out.snow = _z[3];
+  out.forest = _z2[0]; out.glade = _z2[1]; out.fern = _z2[2]; out.moss = _z2[3];
+  // the floor of the deep wood is deep in fallen leaves too, so everything that kicks and sweeps litter treats
+  // it as leaves; `kind` still says which of the two it is (they sound different underfoot)
+  const hollow = _z[2];
+  out.leaves = Math.max(hollow, out.forest * 0.8);
   out.path = _p[0]; out.puddle = _p[1]; out.snowDepth = _p[2] * 0.5; out.dry = _p[3];
   let best = 'grass', bw = out.grass * (1 - out.path);
   if (out.path > 0.5 && out.snow < 0.4) { best = out.puddle > 0.4 ? 'puddle' : 'dirt'; bw = 2; }
   if (out.wheat > bw) { best = 'wheat'; bw = out.wheat; }
-  if (out.leaves > bw) { best = 'leaves'; bw = out.leaves; }
+  if (hollow > bw) { best = 'leaves'; bw = hollow; }
+  if (out.forest > bw) { best = 'forest'; bw = out.forest; }
   if (out.snow > Math.max(0.35, bw * 0.8)) { best = 'snow'; }
   out.kind = best;
   return out;
@@ -191,12 +218,15 @@ export function makeTextures() {
   const path = new THREE.DataTexture(P, ZRES, ZRES, THREE.RGBAFormat, THREE.UnsignedByteType);
   path.minFilter = path.magFilter = THREE.LinearFilter;
   path.needsUpdate = true;
-  return { height, zone, path };
+  const zone2 = new THREE.DataTexture(Z2, ZRES, ZRES, THREE.RGBAFormat, THREE.UnsignedByteType);
+  zone2.minFilter = zone2.magFilter = THREE.LinearFilter;
+  zone2.needsUpdate = true;
+  return { height, zone, path, zone2 };
 }
 
 // GLSL to read the same data (world xz -> uv)
 export const GLSL_WORLD = /* glsl */`
-uniform sampler2D uHeightTex; uniform sampler2D uZoneTex; uniform sampler2D uPathTex;
+uniform sampler2D uHeightTex; uniform sampler2D uZoneTex; uniform sampler2D uPathTex; uniform sampler2D uZone2Tex;
 float worldHeight(vec2 p){
   vec2 f = clamp(p + ${HALF.toFixed(1)}, vec2(0.0), vec2(${(HRES - 1.001).toFixed(3)}));
   ivec2 i = ivec2(floor(f)); vec2 t = f - vec2(i);
@@ -207,4 +237,5 @@ float worldHeight(vec2 p){
 vec2 worldUV(vec2 p){ return (p + ${HALF.toFixed(1)}) / ${(HALF * 2).toFixed(1)}; }
 vec4 worldZone(vec2 p){ return texture(uZoneTex, worldUV(p)); }
 vec4 worldPath(vec2 p){ return texture(uPathTex, worldUV(p)); }
+vec4 worldZone2(vec2 p){ return texture(uZone2Tex, worldUV(p)); }   // deep wood, canopy opening, ferns, moss
 `;

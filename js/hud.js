@@ -7,6 +7,7 @@ const TITLES = {
   wheat: { en: 'The Golden Reach', jp: '<ruby>黄金<rt>おうごん</rt></ruby>の<ruby>麦畑<rt>むぎばたけ</rt></ruby>' },
   leaves: { en: 'Hollow of Falling Leaves', jp: '<ruby>落<rt>お</rt></ruby>ち<ruby>葉<rt>ば</rt></ruby>の<ruby>谷<rt>たに</rt></ruby>' },
   snow: { en: 'Frostveil Rise', jp: '<ruby>雪<rt>ゆき</rt></ruby>の<ruby>丘<rt>おか</rt></ruby>' },
+  forest: { en: 'Hush of the Deepwood', jp: '<ruby>深<rt>ふか</rt></ruby>き<ruby>杜<rt>もり</rt></ruby>' },
 };
 
 export class Hud {
@@ -23,6 +24,7 @@ export class Hud {
     for (let b = 0; b < 360; b += 15) if (b % 90) add(b % 45 ? '·' : '|', b, 'minor');
     this.zoneMarks = [
       { m: add('❋', 0, 'zone'), z: ZONES.wheat }, { m: add('❦', 0, 'zone'), z: ZONES.leaves }, { m: add('❄', 0, 'zone'), z: ZONES.snow },
+      { m: add('♣', 0, 'zone'), z: ZONES.forest },
     ];
     this.sunMark = add('☼', 0, 'zone');
     this.title = document.getElementById('zone-title');
@@ -99,7 +101,7 @@ export class Hud {
     }
     // lands: title when you've been in a new one for a moment
     const s = P.surface;
-    const kind = s.snow > 0.55 ? 'snow' : s.wheat > 0.6 ? 'wheat' : s.leaves > 0.6 ? 'leaves' : (s.grass > 0.85 && s.path < 0.3 ? 'grass' : null);
+    const kind = s.snow > 0.55 ? 'snow' : s.wheat > 0.6 ? 'wheat' : s.forest > 0.6 ? 'forest' : s.leaves > 0.6 ? 'leaves' : (s.grass > 0.85 && s.path < 0.3 ? 'grass' : null);
     if (kind && kind !== this.zone) {
       if (this.pending !== kind) { this.pending = kind; this.pendingT = 0; }
       this.pendingT += dt;

@@ -27,8 +27,13 @@ export class Audio {
     this.whistle = ctx.createBiquadFilter(); this.whistle.type = 'bandpass'; this.whistle.frequency.value = 900; this.whistle.Q.value = 6;
     this.whistleGain = ctx.createGain(); this.whistleGain.gain.value = 0;
     src2.connect(this.whistle).connect(this.whistleGain).connect(this.master);
-    src.start(); src2.start();
-    this.cricketT = 0;
+    // the hush of the canopy: wind in a great many leaves, high overhead
+    const src3 = ctx.createBufferSource(); src3.buffer = buf; src3.loop = true; src3.playbackRate.value = 0.55;
+    this.canopyBP = ctx.createBiquadFilter(); this.canopyBP.type = 'bandpass'; this.canopyBP.frequency.value = 2000; this.canopyBP.Q.value = 0.45;
+    this.canopyGain = ctx.createGain(); this.canopyGain.gain.value = 0;
+    src3.connect(this.canopyBP).connect(this.canopyGain).connect(this.master);
+    src.start(); src2.start(); src3.start();
+    this.cricketT = 0; this.birdT = 4;
   }
 
   setVolume(v) { this.volume = v; if (this.master) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05); }
@@ -65,6 +70,11 @@ export class Audio {
       case 'leaves':
         for (let i = 0; i < 16; i++) this.grain(t + R() * 0.14, 2200 + R() * 4000, 2.5, 0.006 + R() * 0.01, 0.3 * k);
         this.grain(t, 1600, 0.6, 0.12, 0.06 * k);
+        break;
+      case 'forest':                                     // deep soft litter over moss: a duller crunch, and now and then a twig
+        for (let i = 0; i < 9; i++) this.grain(t + R() * 0.15, 1500 + R() * 2600, 2.2, 0.008 + R() * 0.012, 0.22 * k);
+        this.grain(t, 700, 0.6, 0.14, 0.12 * k, 'lowpass'); this.thump(t, 80, 0.07, 0.1 * k);
+        if (R() < 0.1) this.grain(t + 0.03, 3600, 7, 0.012, 0.3 * k);
         break;
       case 'wheat':
         this.grain(t, 4200, 0.7, 0.28, 0.12 * k); this.grain(t + 0.05, 2600, 0.8, 0.22, 0.07 * k);
@@ -132,7 +142,7 @@ export class Audio {
     if (kind !== 'land') this.grain(t, 700, 0.6, 0.35, 0.2 * k, 'lowpass');
     this.step(s, 5, true);
     if (s.kind === 'snow') for (let i = 0; i < 14; i++) this.grain(t + Math.random() * 0.3, 600 + Math.random() * 1400, 1.2, 0.05, 0.2 * k);
-    if (s.kind === 'leaves') for (let i = 0; i < 30; i++) this.grain(t + Math.random() * 0.35, 2500 + Math.random() * 4000, 2.5, 0.008, 0.25 * k);
+    if (s.kind === 'leaves' || s.kind === 'forest') for (let i = 0; i < 30; i++) this.grain(t + Math.random() * 0.35, 2500 + Math.random() * 4000, 2.5, 0.008, 0.25 * k);
   }
 
   // the bow: the creak of a draw, a ping at full draw, the twang, a thunk in the target
@@ -230,13 +240,34 @@ export class Audio {
     s.connect(f).connect(g).connect(this.master); s.start(t); s.stop(t + 0.6);
   }
 
+  // a bird somewhere up in the trees: a short run of rising notes
+  chirp() {
+    const ctx = this.ctx, t0 = ctx.currentTime + 0.02, base = 2300 + Math.random() * 1700, n = 2 + ((Math.random() * 4) | 0);
+    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (pan) { pan.pan.value = Math.random() * 1.6 - 0.8; pan.connect(this.master); }
+    for (let i = 0; i < n; i++) {
+      const t = t0 + i * (0.09 + Math.random() * 0.05), o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(base * (1 + i * 0.05), t); o.frequency.exponentialRampToValueAtTime(base * (1.25 + i * 0.05), t + 0.06);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.02, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
+      o.connect(g).connect(pan || this.master); o.start(t); o.stop(t + 0.1);
+    }
+  }
+
   update(dt, game) {
     if (!this.ctx) return;
     const P = game.player, g = game.wind.gust(P.pos.x, P.pos.z), sp = Math.hypot(P.vel.x, P.vel.z);
     const t = this.ctx.currentTime;
     const menu = game.state !== 'play';
-    const lvl = (0.05 + g * 0.05 + sp * 0.012) * (menu ? 0.6 : 1);
+    // the deep wood: the wind is heard as the canopy high above, a shush that swells with the gusts, not at ground level
+    const wood = game.forest ? game.forest.inside : 0;
+    const lvl = (0.05 + g * 0.05 + sp * 0.012) * (menu ? 0.6 : 1) * (1 - 0.45 * wood);
     this.windGain.gain.setTargetAtTime(lvl, t, 0.3);
+    this.canopyGain.gain.setTargetAtTime(wood * (0.02 + g * 0.014), t, 0.4);
+    this.canopyBP.frequency.setTargetAtTime(1700 + g * 500, t, 0.5);
+    if (wood > 0.3 && !game.sky.night && !menu) {
+      this.birdT -= dt;
+      if (this.birdT <= 0) { this.birdT = 3 + Math.random() * 8; this.chirp(); }
+    }
     this.windLP.frequency.setTargetAtTime(300 + g * 160 + sp * 60, t, 0.3);
     this.whistleGain.gain.setTargetAtTime(Math.max(0, g - 1.8) * 0.02, t, 0.5);
     this.whistle.frequency.setTargetAtTime(700 + g * 180, t, 0.5);

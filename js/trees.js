@@ -18,7 +18,7 @@ const TYPES = {
   bush:  { cell: 2, bark: 'bark', h: [1.2, 1.8], spread: 1.6, depth: 2, leaf: 0.9, tint: 0xc8d8a8, cards: 16 },
 };
 
-function cyl(a, b, r0, r1, segs, out) {
+export function cyl(a, b, r0, r1, segs, out) {
   const dir = new THREE.Vector3().subVectors(b, a), len = dir.length();
   const g = new THREE.CylinderGeometry(r1, r0, len, segs, 1, true);
   g.translate(0, len / 2, 0);
@@ -29,7 +29,7 @@ function cyl(a, b, r0, r1, segs, out) {
   out.push(g);
 }
 
-function card(center, size, rnd, cell, canopyC, out) {
+export function card(center, size, rnd, cell, canopyC, out) {
   const g = new THREE.PlaneGeometry(size, size);
   const e = new THREE.Euler(rnd() * Math.PI, rnd() * Math.PI * 2, rnd() * Math.PI);
   g.applyQuaternion(new THREE.Quaternion().setFromEuler(e));
@@ -144,14 +144,18 @@ export class Trees {
     place('birch', 6, box(ZONES.leaves), 6, zone('leaves', 0.4));
     place('pine', 16, box(ZONES.snow, 1.15), 6.5, zone('snow', 0.35));
     place('birch', 3, box(ZONES.snow), 8, zone('snow', 0.2));
-    place('green', 9, { x0: -120, x1: 120, z0: -40, z1: 120 }, 16, (x, z) => { surfaceAt(x, z, s); return s.grass > 0.9 && s.path < 0.05 && Math.hypot(x, z) < 125; });
-    place('bush', 26, { x0: -70, x1: 60, z0: -20, z1: 60 }, 3, (x, z) => { surfaceAt(x, z, s); return s.grass > 0.7 && s.path < 0.1; });
+    // (the deep wood stands where the meadow used to: it counts as meadow here so the draws below land exactly where
+    // they always did, and whatever fell inside the wood is dropped afterwards)
+    place('green', 9, { x0: -120, x1: 120, z0: -40, z1: 120 }, 16, (x, z) => { surfaceAt(x, z, s); return s.grass + s.forest > 0.9 && s.path < 0.05 && Math.hypot(x, z) < 125; });
+    place('bush', 26, { x0: -70, x1: 60, z0: -20, z1: 60 }, 3, (x, z) => { surfaceAt(x, z, s); return s.grass + s.forest > 0.7 && s.path < 0.1; });
     // a few bushes line the path like hedgerows
     for (let x = -60; x < 20; x += 5 + rnd() * 6) {
       const z = 10 + (x < -30 ? 3.5 : 3.0) - x * 0.17 - 4.5 - rnd() * 2;
       surfaceAt(x, z, s);
       if (s.path < 0.2 && s.grass > 0.5) this.list.push({ x, z, kind: 'bush', rot: rnd() * 6, s: 0.7 + rnd() * 0.5 });
     }
+    // (trees that fell inside the wood are only skipped when the meshes are built, so the rest keep their variants)
+    for (const t of this.list) t.inWood = surfaceAt(t.x, t.z, s).forest >= 0.05;
 
     // materials
     const barkM = new THREE.MeshStandardMaterial({ map: tx.bark.map, normalMap: tx.bark.normal, roughness: 0.95 });
@@ -215,6 +219,7 @@ export class Trees {
         const V = variants[kind][v];
         V.bark.computeBoundingSphere(); V.leaves.computeBoundingSphere();
         mine.forEach((t, i) => {
+          if (t.inWood) return;
           const y = groundY(t.x, t.z);
           const bm = new THREE.Mesh(V.bark, kind === 'birch' ? birchM : barkSnowM);
           const lm = new THREE.Mesh(V.leaves, tintedLeaf(kind === 'pine' ? pineM : leafM, kind));
@@ -231,5 +236,6 @@ export class Trees {
     }
     game.scene.add(group);
     this.group = group;
+    this.list = this.list.filter(t => !t.inWood);
   }
 }

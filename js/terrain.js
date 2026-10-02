@@ -1,6 +1,7 @@
 // Ground mesh for the plain plus the distant mountain ring.
-// The ground shader blends five painted layers (meadow soil, dirt path, leaf litter, rock,
-// wheat stubble) from the baked zone maps, adds puddles that mirror the sky, and snow.
+// The ground shader blends six painted layers (meadow soil, dirt path, leaf litter, rock,
+// wheat stubble, the mossy floor of the deep wood) from the baked zone maps, adds puddles that mirror
+// the sky, and snow.
 import * as THREE from 'three';
 import { H, HALF, HRES, GLSL_WORLD } from './world.js';
 import { GLSL_NOISE, ridge, fbm, smoothstep } from './util.js';
@@ -38,7 +39,7 @@ export function buildTerrain(tex, ground, extra = {}) {
 
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, metalness: 0 });
   const U = {
-    uHeightTex: { value: tex.height }, uZoneTex: { value: tex.zone }, uPathTex: { value: tex.path },
+    uHeightTex: { value: tex.height }, uZoneTex: { value: tex.zone }, uPathTex: { value: tex.path }, uZone2Tex: { value: tex.zone2 },
     uAlb: { value: ground.albedo }, uNrm: { value: ground.normal },
   };
   mat.onBeforeCompile = (s) => {
@@ -59,7 +60,7 @@ export function buildTerrain(tex, ground, extra = {}) {
         }`)
       .replace('#include <map_fragment>', `
         vec2 wp = vWPos.xz;
-        vec4 zn = worldZone(wp), pt = worldPath(wp);
+        vec4 zn = worldZone(wp), pt = worldPath(wp), z2 = worldZone2(wp);
         float path = pt.r, dry = pt.a;
         float blend = smoothstep(0.3, 0.7, nNoise(wp * 0.07));
         // mountains: rock on steep ground, snow up high
@@ -67,26 +68,33 @@ export function buildTerrain(tex, ground, extra = {}) {
         float highSnow = smoothstep(46.0, 58.0, hgt + nNoise(wp * 0.05) * 10.0) * 0.8;
         float rockW = smoothstep(0.22, 0.42, 1.0 - normalize(vWN).y);
         rockW = max(rockW, smoothstep(12.0, 30.0, hgt) * 0.8);
-        float wGrass = zn.r * (1.0 - path), wWheat = zn.g * (1.0 - path), wLeaf = zn.b * (1.0 - path);
+        // the canopy opens over a glade and a little meadow grows in the light
+        float wGrass = (zn.r + z2.g * 0.5) * (1.0 - path), wWheat = zn.g * (1.0 - path), wLeaf = zn.b * (1.0 - path);
+        float wForest = z2.r * (1.0 - z2.g * 0.5) * (1.0 - path);
         float wDirt = path;
         float snow = max(zn.a, highSnow);
         vec4 W0 = vec4(wGrass, wDirt, wLeaf, rockW); float W4 = wWheat;
-        W0.xyz *= (1.0 - rockW); W4 *= (1.0 - rockW);
-        float sum = W0.x + W0.y + W0.z + W0.w + W4 + 1e-4;
-        W0 /= sum; W4 /= sum;
+        float W5 = wForest;
+        W0.xyz *= (1.0 - rockW); W4 *= (1.0 - rockW); W5 *= (1.0 - rockW);
+        float sum = W0.x + W0.y + W0.z + W0.w + W4 + W5 + 1e-4;
+        W0 /= sum; W4 /= sum; W5 /= sum;
         vec3 alb = vec3(0.0); vec3 tn = vec3(0.0);
         if (W0.x > 0.01) { alb += layer(uAlb, 0.0, wp, 3.0, blend).rgb * W0.x; tn += (layer(uNrm, 0.0, wp, 3.0, blend).rgb * 2.0 - 1.0) * W0.x; }
         if (W0.y > 0.01) { alb += layer(uAlb, 1.0, wp, 4.0, blend).rgb * W0.y; tn += (layer(uNrm, 1.0, wp, 4.0, blend).rgb * 2.0 - 1.0) * W0.y; }
         if (W0.z > 0.01) { alb += layer(uAlb, 2.0, wp, 2.6, blend).rgb * W0.z; tn += (layer(uNrm, 2.0, wp, 2.6, blend).rgb * 2.0 - 1.0) * W0.z; }
         if (W0.w > 0.01) { alb += layer(uAlb, 3.0, wp, 7.0, blend).rgb * W0.w; tn += (layer(uNrm, 3.0, wp, 7.0, blend).rgb * 2.0 - 1.0) * W0.w; }
         if (W4 > 0.01)   { alb += layer(uAlb, 4.0, wp, 3.0, blend).rgb * W4;   tn += (layer(uNrm, 4.0, wp, 3.0, blend).rgb * 2.0 - 1.0) * W4; }
+        if (W5 > 0.01)   { alb += layer(uAlb, 5.0, wp, 2.4, blend).rgb * W5;   tn += (layer(uNrm, 5.0, wp, 2.4, blend).rgb * 2.0 - 1.0) * W5; }
+        // moss, thick in the hollows of the wood and over the older ground
+        float mossN = nNoise(wp * 0.35) * 0.6 + nNoise(wp * 2.1) * 0.4;
+        alb = mix(alb, vec3(0.075, 0.17, 0.045) * (0.75 + 0.6 * nNoise(wp * 5.0)), clamp((0.25 + z2.a) * W5 * (0.3 + 0.9 * mossN), 0.0, 1.0) * 0.75);
         // a path kicked through the leaf litter shows the damp soil underneath for a while
         vec4 tr = trailAt(wp);
-        float kicked = clamp(max(tr.b * 0.55, tr.a) * 1.3, 0.0, 1.0) * W0.z * smoothstep(0.25, 0.75, nNoise(wp * 5.0) * 0.6 + 0.55);
+        float kicked = clamp(max(tr.b * 0.55, tr.a) * 1.3, 0.0, 1.0) * (W0.z + W5 * 0.7) * smoothstep(0.25, 0.75, nNoise(wp * 5.0) * 0.6 + 0.55);
         alb = mix(alb, vec3(0.085, 0.066, 0.05) * (0.8 + 0.4 * nNoise(wp * 11.0)), kicked * 0.75);
         // ground scorched by lightning: charred black in a ragged patch, whatever grew or lay there
         float bn = texture(uBurn, fract(wp / uBurnSize)).r;
-        float burnt = smoothstep(0.05, 0.45, bn * 1.2 + (nNoise(wp * 2.3) - 0.5) * 0.45) * (W0.x * 0.8 + W0.y * 0.55 + W0.z * 0.95 + W4 * 0.8);
+        float burnt = smoothstep(0.05, 0.45, bn * 1.2 + (nNoise(wp * 2.3) - 0.5) * 0.45) * (W0.x * 0.8 + W0.y * 0.55 + W0.z * 0.95 + W4 * 0.8 + W5 * 0.95);
         alb = mix(alb, vec3(0.024, 0.02, 0.018) * (0.7 + 0.6 * nNoise(wp * 9.0)), clamp(burnt, 0.0, 1.0) * 0.93);
         // big, soft colour drifts so the meadow isn't one flat green
         float macro = nFbm(wp * 0.02);

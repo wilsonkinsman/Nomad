@@ -6,6 +6,17 @@ import * as THREE from 'three';
 import { SUN_AZ } from './world.js';
 import { clamp, lerp, smoothstep, GLSL_NOISE } from './util.js';
 
+// The shadow map covers a 64 m window round the nomad, and past its edge everything is simply lit. Shadows that run on
+// across the plain (the tall trees of the deep wood throw very long ones at sunrise) would end in a ruler-straight line
+// there, so every shadow lookup fades to "lit" over the outer tenth of the window instead.
+{
+  const chunk = THREE.ShaderChunk.shadowmap_pars_fragment;
+  const soft = chunk.replace(/return shadow;(\s*\}\s*vec2 cubeToUV)/,
+    'vec2 edge2 = min(shadowCoord.xy, 1.0 - shadowCoord.xy);\n\t\tshadow = mix(1.0, shadow, smoothstep(0.0, 0.1, min(edge2.x, edge2.y)));\n\t\treturn shadow;$1');
+  if (soft === chunk) console.warn('the shadow chunk has changed: shadows will end hard at the window edge');
+  THREE.ShaderChunk.shadowmap_pars_fragment = soft;
+}
+
 const ATMOS = /* glsl */`
 const float PI = 3.14159265;
 const float Re = 6360e3, Ra = 6420e3, Hr = 7994.0, Hm = 1200.0;
@@ -89,7 +100,10 @@ export class Sky {
     this.lightDir = new THREE.Vector3(); // whichever body lights the scene
     this.lightColor = new THREE.Color();
     this.sunDiskColor = new THREE.Vector3();
-    this.fog = { haze: new THREE.Vector4(), mist: new THREE.Vector4(), scatter: 1, rays: 0 };
+    this.fog = { haze: new THREE.Vector4(), mist: new THREE.Vector4(), scatter: 1, rays: 0, shafts: 0 };
+    this.forest = 0;                   // 0..1: how deep in the wood the nomad is (set by the forest each frame)
+    this.forestNear = 0;               // 0..1: how close the wood is, for what shows from outside it
+    this.baseY = 0;
     this.exposure = 1;
     this._lastLutDir = new THREE.Vector3(9, 9, 9);
     this._envTimer = 0;
@@ -220,6 +234,7 @@ export class Sky {
 
   update(dt, focus, force = false) {
     this.time += dt;
+    this.baseY = focus.y;              // the ground under the nomad, for whatever hangs in the air above it
     this.uniforms.uTime.value = this.time;
     if (!this.night) this.progress = clamp(this.progress + dt / this.riseSeconds, 0, 1);
     const p = this.progress;
@@ -266,6 +281,11 @@ export class Sky {
       this.fog.rays = lerp(1.0, 0.55, p);
       this.exposure = tn.exposure * lerp(1.0, 0.8, p);
     }
+    // the deep wood: the air under the trees is clear (the beams only need a little haze to show in, not a bank of
+    // mist) and the sun's own scattered rays give way to the shafts the canopy cuts
+    this.fog.mist.x *= 1 - 0.8 * this.forest;
+    this.fog.rays *= 1 - 0.5 * this.forest;
+    this.fog.shafts = this.forestNear;
 
     // re-render the LUT when the light moved enough
     if (force || this._lastLutDir.distanceTo(L) > 0.0015) {
@@ -289,6 +309,9 @@ export class Sky {
     const dist = 120;
     const sc = this.light.shadow.camera;
     const texel = (sc.right - sc.left) / this.light.shadow.mapSize.x;
+    // the window is 64 m square, centred on the ground; the crowns of the deep wood reach forty metres up, so there it rides higher
+    const lift = 18 * this.forestNear;
+    if (sc.top !== 32 + lift) { sc.top = 32 + lift; sc.bottom = -32 + lift; sc.updateProjectionMatrix(); }
     const fx = Math.round(focus.x / texel) * texel, fz = Math.round(focus.z / texel) * texel;
     this.light.target.position.set(fx, focus.y, fz);
     this.light.position.set(fx + L.x * dist, focus.y + L.y * dist, fz + L.z * dist);

@@ -15,6 +15,8 @@ export class CameraRig {
     this.fov = 52;
     this.shake = 0;
     this.menuT = 0;
+    this.clip = 1;            // how much of the arm is left when a trunk is in the way
+    this.obstacles = null;    // {x, z, r} circles the arm must not pass through (the wide trunks of the old trees)
     this.blend = 0;           // 0 = menu orbit, 1 = gameplay
     this._pos = new THREE.Vector3();
     this._look = new THREE.Vector3();
@@ -73,6 +75,22 @@ export class CameraRig {
     const b = this.blend * this.blend * (3 - 2 * this.blend);
     this._pos.lerpVectors(mp, gp, b);
     this._look.lerpVectors(ml, gl, b);
+
+    // a trunk between the nomad and the camera: the arm shortens to stop in front of it (quickly in, slowly out),
+    // rather than put the lens inside the tree. It is walked from the nomad himself, who is never inside a trunk,
+    // and not from the look point, which sits off his shoulder and can be.
+    let free = 1;
+    if (this.obstacles) {
+      for (let i = 1; i <= 12 && free === 1; i++) {
+        const t = i / 12, x = THREE.MathUtils.lerp(player.pos.x, this._pos.x, t), z = THREE.MathUtils.lerp(player.pos.z, this._pos.z, t);
+        for (const c of this.obstacles) {
+          const dx = x - c.x, dz = z - c.z, r = c.r + 0.25;
+          if (dx * dx + dz * dz < r * r) { free = (i - 1) / 12; break; }
+        }
+      }
+    }
+    this.clip = damp(this.clip, free, free < this.clip ? 16 : 2.5, dt);
+    if (this.clip < 0.999) this._pos.lerpVectors(this._look, this._pos, Math.max(0.3, this.clip));
 
     // keep above ground along the arm
     for (let i = 1; i <= 4; i++) {

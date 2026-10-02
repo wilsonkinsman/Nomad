@@ -4,13 +4,14 @@ import * as World from './world.js';
 import { Sky } from './sky.js';
 import { Pipeline } from './post.js';
 import { buildTerrain, buildMountains } from './terrain.js';
-import { groundTextures, fabricTextures, leatherTextures, strawTextures, furTexture, leafAtlas, foliageAtlas, barkTextures, woodTextures, rockTextures, softSprite } from './textures.js';
+import { groundTextures, fabricTextures, leatherTextures, strawTextures, furTexture, leafAtlas, foliageAtlas, barkTextures, woodTextures, rockTextures, fernTexture, softSprite } from './textures.js';
 import { StampField, CutField } from './stamps.js';
 import { Grass } from './grass.js';
 import { Wheat } from './wheat.js';
 import { Snow } from './snow.js';
 import { Leaves } from './leaves.js';
 import { Trees } from './trees.js';
+import { Forest } from './forest.js';
 import { Props } from './props.js';
 import { Particles, Fireflies } from './particles.js';
 import { Audio } from './audio.js';
@@ -31,9 +32,9 @@ import { Tackle } from './tackle.js';
 import { Earth } from './earth.js';
 
 const QUALITY = {
-  low:    { ratio: 0.6,  msaa: 0, shadow: 1024, veg: 0.5 },
-  medium: { ratio: 0.75, msaa: 2, shadow: 2048, veg: 0.75 },
-  high:   { ratio: 1.0,  msaa: 4, shadow: 2048, veg: 1.0 },
+  low:    { ratio: 0.6,  msaa: 0, shadow: 1024, veg: 0.5,  shaftDiv: 4 },
+  medium: { ratio: 0.75, msaa: 2, shadow: 2048, veg: 0.75, shaftDiv: 2 },
+  high:   { ratio: 1.0,  msaa: 4, shadow: 2048, veg: 1.0,  shaftDiv: 2 },
 };
 const SAVE = 'nomad_settings';
 const settings = Object.assign({ night: false, quality: 'medium', volume: 0.7 }, (() => { try { return JSON.parse(localStorage.getItem(SAVE)) || {}; } catch { return {}; } })());
@@ -71,6 +72,7 @@ function applyQuality() {
   renderer.setSize(w, h, false);
   camera.aspect = w / h; camera.updateProjectionMatrix();
   if (game.post) {
+    game.post.shaftDiv = q.shaftDiv;
     if (game.post.msaa !== q.msaa) game.post.setQuality(q.msaa);
     game.post.setSize(Math.floor(w * ratio), Math.floor(h * ratio));
   }
@@ -94,11 +96,12 @@ async function boot() {
   scene.add(buildTerrain(tex, ground, game.terrainExtra));
   scene.add(buildMountains());
   game.sky = new Sky(renderer, scene);
-  game.post = new Pipeline(renderer, scene, camera, game.sky);
+  game.post = new Pipeline(renderer, scene, camera, game.sky, tex);
   await progress(0.6, 'Dressing the wanderer…');
   game.wind = new Wind();
   const tx = { fabric: fabricTextures(), leather: leatherTextures(), straw: strawTextures(), fur: furTexture(),
-    bark: barkTextures(false), birch: barkTextures(true), foliage: foliageAtlas(), wood: woodTextures(), rock: rockTextures() };
+    bark: barkTextures(false), birch: barkTextures(true), foliage: foliageAtlas(), wood: woodTextures(), rock: rockTextures(),
+    leaf: leafAtlas(), fern: fernTexture() };
   game.tx = tx;
   game.player = new Player(game, tx, await loadRonin());
   syncMenu();
@@ -110,13 +113,17 @@ async function boot() {
   Object.assign(game.terrainExtra, { uBurn: game.burn.uniform, uBurnSize: game.burn.sizeUniform });
   game.particles = new Particles(game, softSprite());
   game.trees = new Trees(game, tx);
+  await progress(0.76, 'Raising the old trees…');
+  game.forest = new Forest(game, tx);
+  game.trees.colliders.push(...game.forest.colliders);      // the trunks stop the nomad, the sword and the arrows like any other tree
+  rig.obstacles = game.forest.colliders;                    // and the camera does not go through them
   game.props = new Props(game, tx);
   game.grass = new Grass(game);
   game.wheat = new Wheat(game);
   await progress(0.8, 'Letting the snow settle…');
   game.snow = new Snow(game);
   await progress(0.88, 'Scattering the leaves…');
-  game.leaves = new Leaves(game, leafAtlas(), game.trees.list);
+  game.leaves = new Leaves(game, tx.leaf, [...game.trees.list, ...game.forest.list]);      // the old trees let their leaves go too
   game.player.colliders = [...game.trees.colliders, ...game.props.colliders];
   game.audio = new Audio(); game.audio.volume = settings.volume;
   game.hud = new Hud(game);
@@ -130,7 +137,7 @@ async function boot() {
   game.storm = new Storm(game);
   game.tackle = new Tackle(game);
   game.earth = new Earth(game);
-  game.systems.push(game.grass, game.wheat, game.snow, game.leaves, game.props, game.particles, game.fireflies, game.hud, game.audio);
+  game.systems.push(game.grass, game.wheat, game.snow, game.leaves, game.forest, game.props, game.particles, game.fireflies, game.hud, game.audio);
   game.systems.push(game.flash, game.enemies, game.bow, game.storm, game.tackle, game.earth);
   game.systems.unshift(game.contact);    // body hitboxes stamp before the snow and leaves update
   wireEvents();
@@ -139,7 +146,7 @@ async function boot() {
   await progress(1, 'The sun is coming up…');
   // warm up shaders so the first real frame doesn't hitch
   update(1 / 60); renderer.compile(scene, camera);
-  game.post.render(0.016, 0);
+  game.forest.prepare(); game.post.render(0.016, 0);
   $('loading').classList.add('gone');
   setTimeout(() => $('loading').remove(), 1400);
   showMenu(true);
@@ -273,7 +280,7 @@ function update(dt) {
   input.endFrame();
 }
 game.update = update;
-game.render = (dt = 0.016) => game.post.render(dt, game.fade);
+game.render = (dt = 0.016) => { game.forest.prepare(); game.post.render(dt, game.fade); };
 
 let last = performance.now();
 function loop(now) {

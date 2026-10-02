@@ -211,6 +211,28 @@ function groundStubble(size) {
   return c;
 }
 
+// the floor of the deep wood: dark humus under old needles and twigs, moss in patches, a few dead leaves
+function groundForest(size) {
+  const { c, ctx } = paint(size, (u, v) => {
+    const n = tfbm(u * 9, v * 9, 9, 4, 61), m = tfbm(u * 4, v * 4, 4, 3, 67);
+    const moss = Math.max(0, m - 0.5) * 2.4;
+    return [50 + n * 36 - moss * 16, 42 + n * 28 + moss * 42, 28 + n * 16 - moss * 8, n * 0.5 + moss * 0.25];
+  });
+  const rnd = mulberry32(37);
+  for (let i = 0; i < 6500; i++) {                       // needles and twigs
+    const x = rnd() * size, y = rnd() * size, len = 5 + rnd() * 13, a = rnd() * Math.PI * 2, l = 0.55 + rnd() * 0.75;
+    ctx.strokeStyle = rnd() < 0.18 ? `rgba(${86 * l | 0},${58 * l | 0},${34 * l | 0},0.85)` : `rgba(${70 * l | 0},${52 * l | 0},${34 * l | 0},0.8)`;
+    ctx.lineWidth = 0.9 + rnd() * 0.9;
+    wrapDraw(size, x, y, len, (px, py) => { ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + Math.cos(a) * len, py + Math.sin(a) * len); ctx.stroke(); });
+  }
+  for (let i = 0; i < 90; i++) {                         // dead leaves, long since gone dull
+    const x = rnd() * size, y = rnd() * size, s = 5 + rnd() * 6, type = (rnd() * 3) | 0;
+    const col = AUTUMN[(rnd() * AUTUMN.length) | 0].map(v => v * (0.32 + rnd() * 0.3));
+    wrapDraw(size, x, y, s * 1.3, (px, py) => { drawLeaf(ctx, type, px, py, s, rnd() * Math.PI * 2, col, rnd, false); });
+  }
+  return c;
+}
+
 function arrayTex(canvases, srgb) {
   const size = canvases[0].width, n = canvases.length;
   const data = new Uint8Array(size * size * 4 * n);
@@ -224,11 +246,11 @@ function arrayTex(canvases, srgb) {
   return t;
 }
 
-// layers: 0 grass, 1 dirt, 2 leaf litter, 3 rock, 4 stubble
+// layers: 0 grass, 1 dirt, 2 leaf litter, 3 rock, 4 stubble, 5 forest floor
 export function groundTextures() {
   const S = 512;
-  const cols = [groundGrass(S), groundDirt(S), groundLeaves(S), groundRock(S), groundStubble(S)];
-  const nrm = cols.map((c, i) => normalCanvas(heightFromCanvas(c), S, S, [3, 5, 4, 6, 3][i]));
+  const cols = [groundGrass(S), groundDirt(S), groundLeaves(S), groundRock(S), groundStubble(S), groundForest(S)];
+  const nrm = cols.map((c, i) => normalCanvas(heightFromCanvas(c), S, S, [3, 5, 4, 6, 3, 4][i]));
   return { albedo: arrayTex(cols, true), normal: arrayTex(nrm, false) };
 }
 
@@ -299,6 +321,39 @@ export function foliageAtlas() {
   }
   const t = tex(c, true, false);
   t.generateMipmaps = true;
+  return t;
+}
+
+// ---------------------------------------------------------------- fern frond (alpha cut-out, tip at the top)
+export function fernTexture() {
+  const W = 256, Hh = 512, c = canvas(W, Hh), ctx = c.getContext('2d'), rnd = mulberry32(131);
+  const cx = W / 2, N = 26;
+  ctx.lineCap = 'round';
+  // the rachis, with a faint curve
+  ctx.strokeStyle = 'rgb(46,66,28)'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(cx, Hh - 4); ctx.quadraticCurveTo(cx + 3, Hh * 0.5, cx, 10); ctx.stroke();
+  for (let i = 0; i < N; i++) {
+    const t = (i + 0.5) / N, y = Hh - 10 - t * (Hh - 34);
+    const L = 112 * Math.pow(Math.sin(Math.PI * (0.07 + 0.9 * t)), 0.8);       // long in the middle, short at both ends
+    for (const side of [-1, 1]) {
+      const th = 0.62 + (rnd() - 0.5) * 0.12;                                  // swept forward, toward the tip
+      const dx = side * Math.cos(th), dy = -Math.sin(th);
+      const bx = cx, by = y;
+      const lobes = 6, w = 6 + L * 0.075;
+      const k = 0.7 + t * 0.5;                                                 // young growth at the tip is paler
+      for (let j = 0; j < lobes; j++) {
+        const f = (j + 0.6) / lobes, px = bx + dx * L * f, py = by + dy * L * f;
+        const rl = (L / lobes) * 0.95, rw = w * (1 - f * 0.75);
+        const r = (70 + 80 * k * f) * (0.85 + rnd() * 0.3), g = (120 + 70 * k) * (0.85 + rnd() * 0.3), b = (36 + 34 * k * f) * (0.85 + rnd() * 0.3);
+        ctx.fillStyle = `rgb(${r | 0},${g | 0},${b | 0})`;
+        ctx.beginPath(); ctx.ellipse(px, py, rl, Math.max(2, rw), Math.atan2(dy, dx), 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.strokeStyle = 'rgba(40,64,24,0.75)'; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx + dx * L, by + dy * L); ctx.stroke();
+    }
+  }
+  const t = tex(c, true, false);
+  t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter;
   return t;
 }
 

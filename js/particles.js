@@ -98,7 +98,7 @@ export class Particles {
   }
 }
 
-// Fireflies drifting over the meadow on moonlit nights: GPU only, wrapped around the camera.
+// Fireflies drifting over the meadow and through the old wood on moonlit nights: GPU only, wrapped around the camera.
 export class Fireflies {
   constructor(game, sprite) {
     this.game = game;
@@ -108,16 +108,16 @@ export class Fireflies {
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('seed', new THREE.BufferAttribute(seed, 1));
     geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e5);
-    this.U = { uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uAmt: { value: 0 }, uSprite: { value: sprite }, uScale: { value: 800 }, uZone: { value: game.worldTex.zone }, uH: { value: game.worldTex.height } };
+    this.U = { uTime: { value: 0 }, uCam: { value: new THREE.Vector3() }, uAmt: { value: 0 }, uSprite: { value: sprite }, uScale: { value: 800 }, uZone: { value: game.worldTex.zone }, uZone2: { value: game.worldTex.zone2 }, uH: { value: game.worldTex.height } };
     const mat = new THREE.ShaderMaterial({
       uniforms: this.U, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      vertexShader: `attribute float seed; uniform float uTime, uAmt, uScale; uniform vec3 uCam; uniform sampler2D uZone, uH; varying float vA;
+      vertexShader: `attribute float seed; uniform float uTime, uAmt, uScale; uniform vec3 uCam; uniform sampler2D uZone, uZone2, uH; varying float vA;
         void main(){
           vec3 p = position;
           p.xz = mod(p.xz - uCam.xz + 25.0, 50.0) + uCam.xz - 25.0;
           p += vec3(sin(uTime * 0.4 + seed * 30.0), sin(uTime * 0.7 + seed * 11.0) * 0.4, cos(uTime * 0.35 + seed * 17.0)) * 0.8;
           vec2 uv = (p.xz + 200.0) / 400.0;
-          float meadow = texture2D(uZone, uv).r + texture2D(uZone, uv).g * 0.7;
+          float meadow = texture2D(uZone, uv).r + texture2D(uZone, uv).g * 0.7 + texture2D(uZone2, uv).r * 0.9;       // the meadow, the wheat, and the old wood
           vec2 f = clamp(p.xz + 200.0, vec2(0.0), vec2(399.0));
           p.y += texelFetch(uH, ivec2(f), 0).r;
           vec4 mv = modelViewMatrix * vec4(p, 1.0);

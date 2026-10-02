@@ -9,9 +9,9 @@ import { addTranslucency, GLSL_CULL } from './grass.js';
 import { mulberry32, clamp } from './util.js';
 
 const CELL = 2;
-const GROUND = 56000, POOL = 320;
+const HOLLOW = 56000, WOOD = 32000, GROUND = HOLLOW + WOOD, POOL = 320;
 
-function leafGeometry() {
+export function leafGeometry() {
   const h = 0.12;
   const pos = [-0.5, h, -0.5, 0, 0, -0.5, 0.5, h, -0.5, -0.5, h, 0.5, 0, 0, 0.5, 0.5, h, 0.5];
   const uv = [0, 0, 0.5, 0, 1, 0, 0, 1, 0.5, 1, 1, 1];
@@ -62,7 +62,7 @@ export class Leaves {
     const G = makeMesh(GROUND), F = makeMesh(POOL);
     this.mesh = G.m; this.poolMesh = F.m;
     const col = new THREE.Color();
-    const init = (i, x, zz, cellArr, ci, mesh) => {
+    const init = (i, x, zz, cellArr, ci, mesh, dim = 1) => {
       this.pos[i * 3] = x; this.pos[i * 3 + 2] = zz;
       this.rest[i] = 0.004 + rnd() * 0.022;
       this.pos[i * 3 + 1] = groundY(x, zz) + this.rest[i];
@@ -70,19 +70,33 @@ export class Leaves {
       this.spin[i * 3 + 1] = rnd() * 6.28; this.spin[i * 3 + 2] = 3 + rnd() * 3;
       this.scale[i] = 0.12 + rnd() * 0.09;
       cellArr[ci] = Math.floor(rnd() * 16);
-      const k = 0.55 + rnd() * 0.5;
+      const k = (0.55 + rnd() * 0.5) * dim;
       mesh.setColorAt(ci, col.setRGB(k, k * (0.85 + rnd() * 0.15), k * (0.8 + rnd() * 0.2)));
     };
     let placed = 0, guard = 0;
-    while (placed < GROUND && guard++ < GROUND * 30) {
+    const local = this.trees.filter(t => Math.hypot(t.x - z.cx, t.z - z.cz) < Math.hypot(z.rx, z.rz) * 1.5);      // the trees that stand over the litter
+    while (placed < HOLLOW && guard++ < HOLLOW * 30) {
       const x = z.cx + (rnd() * 2 - 1) * z.rx * 1.25, zz = z.cz + (rnd() * 2 - 1) * z.rz * 1.25;
       const sf = surfaceAt(x, zz, s);
       // denser under the trees
       let near = 0;
-      for (const t of this.trees) { const d = Math.hypot(t.x - x, t.z - zz); if (d < 9) near = Math.max(near, 1 - d / 9); }
+      for (const t of local) { const d = Math.hypot(t.x - x, t.z - zz); if (d < 9) near = Math.max(near, 1 - d / 9); }
       const want = sf.leaves * (0.6 + 0.8 * near) * (1 - sf.path * 0.55) + (sf.grass * 0.05 * near);
       if (rnd() > want) continue;
       init(placed, x, zz, G.cell.array, placed, this.mesh);
+      placed++;
+    }
+    // the floor of the deep wood: fewer leaves, duller on the moss, more of them gathered round the trunks
+    const W = ZONES.forest, trunks = this.trees.filter(t => t.kind === 'forest');
+    guard = 0;
+    while (placed < GROUND && guard++ < WOOD * 30) {
+      const x = W.cx + (rnd() * 2 - 1) * W.rx * 1.1, zz = W.cz + (rnd() * 2 - 1) * W.rz * 1.1;
+      const sf = surfaceAt(x, zz, s);
+      if (sf.forest < 0.1) continue;
+      let near = 0;
+      for (const t of trunks) { const d = Math.hypot(t.x - x, t.z - zz); if (d < 6) near = Math.max(near, 1 - d / 6); }
+      if (rnd() > sf.forest * (0.34 + 0.5 * near) * (1 - sf.glade * 0.55) * (1 - sf.path * 0.6)) continue;
+      init(placed, x, zz, G.cell.array, placed, this.mesh, 0.75);
       placed++;
     }
     this.NG = placed;
@@ -239,16 +253,21 @@ export class Leaves {
   }
 
   update(dt, game) {
-    // the litter is one draw of 56 000 leaves: skip it when the hollow is out of sight or beyond the distance a leaf
+    // the litter is one draw of 88 000 leaves: skip it when the hollow and the wood are out of sight or beyond the distance a leaf
     // is more than a speck (the shader drops the far and off-screen ones one by one when it is drawn)
     {
-      const c = game.camera.position, Z = ZONES.leaves, R = Math.max(Z.rx, Z.rz) * 1.3;
-      if (!this._box) { this._box = new THREE.Box3(new THREE.Vector3(Z.cx - R, -10, Z.cz - R), new THREE.Vector3(Z.cx + R, 25, Z.cz + R)); this._fr = new THREE.Frustum(); this._pm = new THREE.Matrix4(); }
-      const gap = Math.hypot(Math.max(0, Math.abs(c.x - Z.cx) - R), Math.max(0, Math.abs(c.z - Z.cz) - R));
+      const c = game.camera.position;
+      if (!this._zones) {
+        this._zones = [ZONES.leaves, ZONES.forest].map(Z => { const R = Math.max(Z.rx, Z.rz) * 1.3; return { Z, R, box: new THREE.Box3(new THREE.Vector3(Z.cx - R, -10, Z.cz - R), new THREE.Vector3(Z.cx + R, 25, Z.cz + R)) }; });
+        this._fr = new THREE.Frustum(); this._pm = new THREE.Matrix4();
+      }
       game.camera.updateMatrixWorld();
       this._pm.multiplyMatrices(game.camera.projectionMatrix, game.camera.matrixWorldInverse);
       this._fr.setFromProjectionMatrix(this._pm);
-      this.mesh.visible = gap < 85 && this._fr.intersectsBox(this._box);
+      this.mesh.visible = this._zones.some(({ Z, R, box }) => {
+        const gap = Math.hypot(Math.max(0, Math.abs(c.x - Z.cx) - R), Math.max(0, Math.abs(c.z - Z.cz) - R));
+        return gap < 85 && this._fr.intersectsBox(box);
+      });
     }
     if (dt <= 0) return;
     this.burn(dt);
