@@ -220,6 +220,9 @@ export function surfaceAt(x, z, out = {}) {
   // it as leaves; `kind` still says which of the two it is (they sound different underfoot)
   const hollow = _z[2];
   out.leaves = Math.max(hollow, out.forest * 0.8);
+  // how much grass stands here: the meadow's, or the grass on the floor of the wood (thicker in the glades), for
+  // what cuts it, flattens it and kicks up clippings; `grass` itself stays the meadow's, which placement depends on
+  out.blades = Math.max(out.grass, out.forest * (0.55 + 0.45 * out.glade));
   out.path = _p[0]; out.puddle = _p[1]; out.snowDepth = _p[2] * 0.5; out.dry = _p[3];
   out.paved = paving && inVillage(x, z, 4) ? paving(x, z) : 0;
   let best = 'grass', bw = out.grass * (1 - out.path);

@@ -50,7 +50,7 @@ export class Grass {
     this.game = game;
     const tex = game.worldTex;
     this.shared = {
-      uHeightTex: { value: tex.height }, uZoneTex: { value: tex.zone }, uPathTex: { value: tex.path },
+      uHeightTex: { value: tex.height }, uZoneTex: { value: tex.zone }, uPathTex: { value: tex.path }, uZone2Tex: { value: tex.zone2 },
       uTrample: game.trample.uniform, uTrampleRect: { value: game.trample.rect },
       uCut: game.cut.uniform, uCutSize: game.cut.sizeUniform,       // where the blade has cut (and how recently)
       uPlayer: { value: new THREE.Vector3() }, uCenter: { value: new THREE.Vector2() },
@@ -84,7 +84,7 @@ export class Grass {
           .replace('#include <common>', `#include <common>
             ${GLSL_WORLD} ${GLSL_WIND} ${GLSL_NOISE} ${GLSL_TRAMPLE} ${GLSL_CULL}
             uniform int uGrid; uniform float uSize, uSpacing, uNear, uFar, uWidth, uCutSize; uniform vec2 uCenter; uniform vec3 uPlayer; uniform sampler2D uCut;
-            varying float vT, vCut; varying vec3 vTint;`)
+            varying float vT, vCut, vWood; varying vec3 vTint;`)
           .replace('#include <beginnormal_vertex>', `
             int gid = gl_InstanceID;
             vec2 cell = vec2(float(gid % uGrid), float(gid / uGrid));
@@ -102,10 +102,14 @@ export class Grass {
             vec4 zn = worldZone(wxz); vec4 pt = worldPath(wxz);
             float dens = zn.r * (1.0 - smoothstep(0.2, 0.6, pt.r)) * (1.0 - smoothstep(0.05, 0.35, zn.a));
             dens = max(dens, zn.b * 0.1 * (1.0 - pt.r));     // a few tufts poke through the leaves
+            // the floor of the deep wood: grass all through it in soft patches, thickest where a glade lets the light in
+            vec4 z2 = worldZone2(wxz);
+            float wood = z2.r * (1.0 - smoothstep(0.2, 0.6, pt.r));
+            dens = max(dens, wood * (0.55 + 0.45 * z2.g) * (0.45 + 0.55 * smoothstep(0.3, 0.7, nNoise(wxz * 0.11 + 7.0))));
             float k = clamp((dens * fade - r3 * 0.55) * 4.0, 0.0, 1.0);
             if (k <= 0.0) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); return; }
             float patchN = nNoise(wxz * 0.13);
-            float hgt = mix(0.22, 0.6, r1) * (0.6 + 0.8 * patchN) * k * (1.0 + pt.a * 0.3);
+            float hgt = mix(0.22, 0.6, r1) * (0.6 + 0.8 * patchN) * k * (1.0 + pt.a * 0.3) * (1.0 + 0.3 * z2.g * wood);
             // cut: stubble stays low for a while and then grows back, each blade a little out of step
             float cutRaw = texture(uCut, fract(wxz / uCutSize)).r;
             float cutK = smoothstep(0.04, 0.6, cutRaw + (r3 - 0.5) * 0.3 * smoothstep(0.0, 0.15, cutRaw));
@@ -133,19 +137,20 @@ export class Grass {
             vec3 objectNormal = normalize(cross(s3, tang));
             objectNormal = normalize(objectNormal + s3 * position.x * 1.4 + up * 0.35);
             vT = t; vCut = cutK;
-            float dry = smoothstep(0.35, 0.8, pt.a + (r3 - 0.5) * 0.4);
-            vTint = vec3(r1, dry, patchN);
+            float dry = smoothstep(0.35, 0.8, pt.a + (r3 - 0.5) * 0.4) * (1.0 - 0.8 * wood);      // the wood's grass stays green in the shade
+            vTint = vec3(r1, dry, patchN); vWood = wood;
             #ifdef USE_TANGENT
               vec3 objectTangent = vec3( tangent.xyz );
             #endif`)
           .replace('#include <begin_vertex>', 'vec3 transformed = bladeP;');
         s.fragmentShader = s.fragmentShader
-          .replace('#include <common>', '#include <common>\nvarying float vT, vCut; varying vec3 vTint;')
+          .replace('#include <common>', '#include <common>\nvarying float vT, vCut, vWood; varying vec3 vTint;')
           .replace('#include <map_fragment>', `
             vec3 lush = mix(vec3(0.035, 0.07, 0.014), vec3(0.13, 0.2, 0.045), vT);
             vec3 dryc = mix(vec3(0.07, 0.06, 0.02), vec3(0.3, 0.25, 0.1), vT);
             vec3 gc = mix(lush, dryc, vTint.y * 0.7);
             gc *= mix(0.75, 1.2, vTint.x) * mix(0.85, 1.1, vTint.z);
+            gc = mix(gc, gc * vec3(0.72, 1.0, 0.8), vWood * 0.85);        // deeper and cooler under the trees
             gc = mix(gc, vec3(0.36, 0.38, 0.13) * mix(0.8, 1.15, vTint.x), vCut * 0.8);     // the cut ends show pale
             diffuseColor.rgb = gc * mix(mix(0.45, 0.95, vCut), 1.0, smoothstep(0.0, 0.5, vT));`);
         addTranslucency(s, '0.55 * vT');

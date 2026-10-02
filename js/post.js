@@ -1,9 +1,9 @@
 // Frame pipeline: HDR scene (MSAA, with depth) -> light shafts through the canopy (marched through the shadow
-// map) -> height fog + ground mist + sun scattering -> crepuscular rays -> bloom -> exposure, ACES, grade,
-// vignette -> screen.
+// map and the wood's fog) -> height fog + ground mist + sun scattering + the deep wood's fog -> crepuscular rays ->
+// bloom -> exposure, ACES, grade, vignette -> screen.
 import * as THREE from 'three';
-import { GLSL_SHADOW_LIT, bindShadow } from './shafts.js';
-import { GLSL_NOISE } from './util.js';
+import { GLSL_SHADOW_LIT, GLSL_WOOD_FOG, bindShadow, woodFogUniforms } from './shafts.js';
+import { ZONES } from './world.js';
 
 const V = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 const quadGeo = new THREE.PlaneGeometry(2, 2);
@@ -15,6 +15,7 @@ class Quad {
 }
 const shader = (uniforms, frag, extra = {}) => new THREE.ShaderMaterial({ uniforms, vertexShader: V, fragmentShader: frag, depthTest: false, depthWrite: false, ...extra });
 
+const WOOD_TINT_DAY = new THREE.Vector3(0.42, 0.52, 0.5), WOOD_TINT_NIGHT = new THREE.Vector3(0.9, 1.0, 1.2);
 const SKYUV = `vec2 skyUV(vec3 d){ float u = atan(d.z, d.x) / 6.2831853 + 0.5; float e = asin(clamp(d.y, -1.0, 1.0)); return vec2(u, 0.5 + 0.5 * sign(e) * sqrt(abs(e) / 1.5707963)); }`;
 
 export class Pipeline {
@@ -22,8 +23,8 @@ export class Pipeline {
     this.r = renderer; this.scene = scene; this.camera = camera; this.sky = sky; this.tex = tex;
     this.msaa = 4;
     this.shaftDiv = 2;            // the shafts are marched at 1/2 size (1/4 on low)
-    this.shaftDensity = 0.075;    // how much haze there is for the light to show in, per metre, in the deep wood
-    this.woodAir = 0.0038;        // and how thick the haze under the old trees is to look through (0: crystal clear; 0.02: fog)
+    this.woodFog = 0.07;          // how thick the fog on the floor of the deep wood is, per metre (0.02: a haze; 0.12: you can't see 15 m)
+    this.shaftGain = 1.6;         // how brightly that fog lights up where the sun or the moon gets through the canopy
     this.bloomStrength = 0.07;
     this.w = 1; this.h = 1;
     const hf = { type: THREE.HalfFloatType, depthBuffer: false };
@@ -41,52 +42,57 @@ export class Pipeline {
       uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uCamPos: { value: new THREE.Vector3() },
       uSunDir: { value: sky.lightDir }, uSunCol: { value: new THREE.Vector3() },
       uHaze: { value: sky.fog.haze }, uMist: { value: sky.fog.mist }, uScatter: { value: 1 }, uRays: { value: 0 }, uTime: { value: 0 }, uIndoor: { value: 0 },
-      tShafts: { value: this.shaftRT.texture }, uShafts: { value: 0 }, uForest: { value: 0 }, uWoodAir: { value: this.woodAir }, uShaftTexel: { value: new THREE.Vector2() },
+      tShafts: { value: this.shaftRT.texture }, uShafts: { value: 0 }, uForest: { value: 0 }, uShaftTexel: { value: new THREE.Vector2() },
+      uWoodTint: { value: new THREE.Vector3() },
     };
+    const fogW = tex ? woodFogUniforms(tex, ZONES.forest) : null;
+    if (fogW) Object.assign(this.fogU, fogW);
     // light shafts: for every pixel, walk the view ray out to what it hits and add up the light scattered by the
     // haze at the steps that are in the sun (or the moon), asking the shadow map whether each step is
     this.shaftU = {
-      tDepth: { value: null }, tShadow: { value: null }, tZone2: { value: tex ? tex.zone2 : null }, uShadowMat: { value: new THREE.Matrix4() },
+      tDepth: { value: null }, tShadow: { value: null }, uShadowMat: { value: new THREE.Matrix4() },
       uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uCamPos: { value: new THREE.Vector3() },
       uLightDir: { value: sky.lightDir }, uLightCol: { value: new THREE.Vector3() },
-      uAmt: { value: 0 }, uTime: { value: 0 }, uBase: { value: 0 }, uMaxDist: { value: 56 }, uDensity: { value: this.shaftDensity },
+      uAmt: { value: 0 }, uMaxDist: { value: 56 }, ...fogW,
     };
     this.shafts = new Quad(shader(this.shaftU, `
-      ${GLSL_NOISE}
       ${GLSL_SHADOW_LIT}
-      uniform sampler2D tDepth, tZone2; uniform mat4 uInvProj, uCamWorld; uniform vec3 uCamPos, uLightDir, uLightCol;
-      uniform float uAmt, uTime, uBase, uMaxDist, uDensity; varying vec2 vUv;
-      float ign(vec2 p){ return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
+      ${GLSL_WOOD_FOG}
+      uniform sampler2D tDepth; uniform mat4 uInvProj, uCamWorld; uniform vec3 uCamPos, uLightDir, uLightCol;
+      uniform float uAmt, uMaxDist; varying vec2 vUv;
       void main(){
         float z = texture2D(tDepth, vUv).r;
         vec4 vp = uInvProj * vec4(vUv * 2.0 - 1.0, z * 2.0 - 1.0, 1.0); vp /= vp.w;
         vec3 rd = (uCamWorld * vp).xyz - uCamPos; float d = length(rd); rd /= d;
         d = min(z >= 0.9999999 ? uMaxDist : d, uMaxDist);
+        // only the stretch of the ray that is in the wood's air is walked
+        vec2 ws = woodSpan(uCamPos, rd);
+        float t0 = max(ws.x, 0.0), t1 = min(ws.y, d);
+        if (t1 <= t0) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
         const int N = 30;
-        float stepL = d / float(N), j = ign(gl_FragCoord.xy);
-        // looking toward the light the haze glares; from the side it still shows
+        float stepL = (t1 - t0) / float(N), j = ign(gl_FragCoord.xy);
+        // looking toward the light the fog glares; from the side it still shows
         float mu = dot(rd, uLightDir), g = 0.55;
         float hg = (1.0 - g * g) / (12.566 * pow(1.0 + g * g - 2.0 * g * mu, 1.5));
         float phase = 0.5 * 0.0796 + 0.5 * hg;
-        float acc = 0.0;
+        // the light the fog scatters toward the eye where it is lit, less what the fog in front takes away again
+        float acc = 0.0, T = 1.0;
         for (int i = 0; i < N; i++){
-          vec3 p = uCamPos + rd * ((float(i) + j) * stepL);
-          float lit = shadowLit(p);
-          if (lit <= 0.0) continue;
-          float wood = texture2D(tZone2, (p.xz + 200.0) / 400.0).r;               // only the air over the wood is hazy enough
-          float h = max(p.y - uBase, 0.0);
-          float dens = uDensity * wood * exp(-h * 0.03) * (0.6 + 0.8 * nNoise(p.xz * 0.16 + p.y * 0.08 + uTime * 0.015));
-          acc += lit * dens;
+          vec3 p = uCamPos + rd * (t0 + (float(i) + j) * stepL);
+          float s = woodFog(p) * stepL;
+          if (s <= 0.0) continue;
+          acc += shadowLit(p) * T * (1.0 - exp(-s));
+          T *= exp(-s);
+          if (T < 0.01) break;
         }
-        // soft limit: a wide open glade glares, it does not blow out
-        float s = acc * stepL * phase;
-        gl_FragColor = vec4(uLightCol * ((1.0 - exp(-s * 2.5)) / 2.5 * uAmt), 1.0);
+        gl_FragColor = vec4(uLightCol * (acc * phase * uAmt), 1.0);
       }`));
 
     this.fog = new Quad(shader(this.fogU, `
       uniform sampler2D tColor, tDepth, tRays, tSky, tShafts; uniform mat4 uInvProj, uCamWorld; uniform vec3 uCamPos, uSunDir, uSunCol;
-      uniform vec4 uHaze, uMist; uniform float uScatter, uRays, uTime, uIndoor, uShafts, uForest, uWoodAir; uniform vec2 uShaftTexel; varying vec2 vUv;
+      uniform vec4 uHaze, uMist; uniform float uScatter, uRays, uTime, uIndoor, uShafts, uForest; uniform vec2 uShaftTexel; uniform vec3 uWoodTint; varying vec2 vUv;
       ${SKYUV}
+      ${GLSL_WOOD_FOG}
       float od(vec4 f, float y0, float dy, float d){
         float k = f.y * dy; float base = f.x * exp(-f.y * (y0 - f.z));
         return abs(k) > 1e-4 ? base * (1.0 - exp(-k * d)) / k : base * d;
@@ -116,9 +122,18 @@ export class Pipeline {
         vec3 ins = fogCol * 0.95 + uSunCol * hg * uScatter * 0.32;
         ins *= mix(vec3(1.0), vec3(0.3, 0.52, 0.6), uForest);         // under the canopy the haze is shade, not sunrise
         col = col * T + ins * (1.0 - T);
-        // the air under the old trees: a faint blue-green haze, so the far trunks settle back into it
-        float Tf = exp(-uForest * uWoodAir * min(d, 140.0));
-        col = col * Tf + fogCol * vec3(0.5, 0.78, 0.8) * 0.32 * (1.0 - Tf);
+        // the deep wood's fog, walked through wherever the ray crosses the wood: lit by the sky through the canopy
+        // (the beams of sun and moon in it are added below, from the shaft pass)
+        vec2 ws = woodSpan(uCamPos, rd);
+        float t0 = max(ws.x, 0.0), t1 = min(ws.y, min(d, 320.0));
+        if (t1 > t0 && uFogDensity > 0.0) {
+          const int NW = 16;
+          float st = (t1 - t0) / float(NW), jw = ign(gl_FragCoord.xy), odw = 0.0;
+          for (int i = 0; i < NW; i++) odw += woodFog(uCamPos + rd * (t0 + (float(i) + jw) * st));
+          float Tw = exp(-odw * st);
+          vec3 sky = texture2D(tSky, skyUV(vec3(0.0, 1.0, 0.0))).rgb * 0.5 + texture2D(tSky, skyUV(normalize(vec3(rd.x, 0.08, rd.z)))).rgb * 0.5;
+          col = col * Tw + sky * uWoodTint * (1.0 - Tw);
+        }
         col += texture2D(tRays, vUv).rgb * uRays;
         // the shafts come from a small, jittered buffer: four taps between its texels smooth the grain away
         vec3 sh4 = (texture2D(tShafts, vUv + uShaftTexel * vec2(-0.75, -0.75)).rgb + texture2D(tShafts, vUv + uShaftTexel * vec2(0.75, -0.75)).rgb
@@ -278,6 +293,15 @@ export class Pipeline {
     }
     this.fogU.uRays.value = rays * 0.9;
 
+    // the deep wood's fog (its uniforms are shared by the shaft pass and the fog pass)
+    const f = this.fogU;
+    if (f.uFogDensity) {
+      f.uFogDensity.value = this.woodFog;                          // (seen from anywhere: only rays that cross the wood walk it)
+      f.uFogTime.value += dt;
+      // the fog under the trees is lit by the sky through the leaves: grey-green by day, a cold blue under the moon
+      f.uWoodTint.value.copy(sky.night ? WOOD_TINT_NIGHT : WOOD_TINT_DAY);
+    }
+
     // the shafts the canopy cuts (only where there is a wood to cut them), found through the light's shadow map
     const sf = this.shaftU;
     let shafts = 0;
@@ -286,17 +310,13 @@ export class Pipeline {
       if (bindShadow(sf, sky.light)) {
         sf.uInvProj.value.copy(cam.projectionMatrixInverse); sf.uCamWorld.value.copy(cam.matrixWorld); sf.uCamPos.value.copy(cam.position);
         sf.uLightCol.value.set(sky.lightColor.r, sky.lightColor.g, sky.lightColor.b);
-        sf.uAmt.value = sky.fog.shafts * (sky.night ? 1.8 : 1);       // the moon is a thin light: its beams get a little help
-        sf.uDensity.value = this.shaftDensity;
-        sf.uBase.value = sky.baseY;
-        sf.uTime.value += dt;
+        sf.uAmt.value = sky.fog.shafts * this.shaftGain * (sky.night ? 1.8 : 1);       // the moon is a thin light: its beams get a little help
         this.shafts.render(r, this.shaftRT);
         shafts = 1;
       }
     }
 
-    const f = this.fogU;
-    f.uShafts.value = shafts; f.uForest.value = sky.forest; f.uWoodAir.value = this.woodAir;
+    f.uShafts.value = shafts; f.uForest.value = sky.forest;
     f.tColor.value = this.sceneRT.texture; f.tDepth.value = this.sceneRT.depthTexture;
     f.uInvProj.value.copy(cam.projectionMatrixInverse); f.uCamWorld.value.copy(cam.matrixWorld);
     f.uCamPos.value.copy(cam.position);

@@ -377,7 +377,7 @@ export class CrowFlight {
         G.snow.stamp(f.x, f.z, 0.18, 0.35, P.heading, 1, 1);
         if (s.leaves > 0.15) G.leaves.kick?.(f.x, f.z, 0.6, 1.4, P.vel.x * 0.4, P.vel.z * 0.4);
         if (Math.random() < 0.7) {
-          const kind = s.snow > 0.4 ? 'snow' : s.wheat > 0.4 ? 'chaff' : s.grass > 0.4 && s.path < 0.4 ? 'clip' : 'dust';
+          const kind = s.snow > 0.4 ? 'snow' : s.wheat > 0.4 ? 'chaff' : s.blades > 0.4 && s.path < 0.4 ? 'clip' : 'dust';
           G.particles.emit(kind, f.x, gy + 0.08, f.z, P.vel.x * 0.25, 1.2 + Math.random() * 1.5, P.vel.z * 0.25, 1, kind === 'dust' ? 2 : 3);
         }
       }

@@ -638,7 +638,7 @@ export class Weapon {
   // a point of the blade at (x, y, z): cut the stalks under it if it is within their height
   cutAt(x, y, z, vx, vz, along) {
     const G = this.game, s = surfaceAt(x, z, this._s), gy = groundY(x, z), h = y - gy;
-    const wheat = s.wheat > 0.35, grass = !wheat && s.grass > 0.3 && s.path < 0.6;
+    const wheat = s.wheat > 0.35, grass = !wheat && s.blades > 0.3 && s.path < 0.6;
     if (!wheat && !grass) return;
     if (h > (wheat ? 1.15 : 0.8) || h < -0.3) return;
     G.cut.stamp(x, z, 0.24 + 0.08 * along, 1);
@@ -653,13 +653,13 @@ export class Weapon {
   strike(x, z, r, dx, dz, power, kind) {
     const G = this.game, s = surfaceAt(x, z, this._s), y = groundY(x, z), pz = G.particles;
     // grass and wheat are cut where the blade really is (cutSweep), not pushed flat; other ground is shoved
-    if (s.grass < 0.3 && s.wheat < 0.3) G.trample.stamp(x, z, r, clamp(0.55 + power * 0.4, 0, 1), dx, dz, 1);
+    if (s.blades < 0.3 && s.wheat < 0.3) G.trample.stamp(x, z, r, clamp(0.55 + power * 0.4, 0, 1), dx, dz, 1);
     if (s.leaves > 0.15) G.leaves.kick(x, z, r + 0.3, 0.8 + power, dx * (kind === 'thrust' ? 9 : 6), dz * (kind === 'thrust' ? 9 : 6));
     if (s.leaves > 0.15 && G.storm && G.storm.charged) G.leaves.singe(x, z, r + 0.4, 0.5);
     if (Math.random() < 0.7) {
       if (s.wheat > 0.35) pz.emit('seed', x, y + 0.55, z, dx * 3, 1.5, dz * 3, 1.2, kind === 'cut' ? 4 : 2);
       else if (s.snow > 0.4) pz.emit('powder', x, y + G.snow.depthAt(x, z), z, dx * 2, 1.0, dz * 2, 1.0, 2);
-      else if (s.grass > 0.35 && s.path < 0.4) pz.emit('grass', x, y + 0.25, z, dx * 3, 2.0, dz * 3, 1.3, kind === 'cut' ? 4 : 2);
+      else if (s.blades > 0.35 && s.path < 0.4) pz.emit('grass', x, y + 0.25, z, dx * 3, 2.0, dz * 3, 1.3, kind === 'cut' ? 4 : 2);
       else if (s.path > 0.4) pz.emit('dust', x, y + 0.05, z, dx * 1.5, 0.6, dz * 1.5, 0.6, 1);
     }
   }
@@ -672,16 +672,16 @@ export class Weapon {
     for (let a = 0.35; a <= 1.7; a += 0.3) {
       const [px, pzz] = this.at(F, a, 0);
       const sp = surfaceAt(px, pzz, this._s);
-      if (sp.grass > 0.3 || sp.wheat > 0.3) G.cut.stamp(px, pzz, 0.34, 1); else G.trample.stamp(px, pzz, 0.55, 1, F.fx, F.fz, 1);
+      if (sp.blades > 0.3 || sp.wheat > 0.3) G.cut.stamp(px, pzz, 0.34, 1); else G.trample.stamp(px, pzz, 0.55, 1, F.fx, F.fz, 1);
     }
-    if (s.grass > 0.3 || s.wheat > 0.3) G.cut.stamp(x, z, 0.55, 1); else G.trample.stamp(x, z, 0.9, 1, F.fx * 0.4, F.fz * 0.4, 1);
+    if (s.blades > 0.3 || s.wheat > 0.3) G.cut.stamp(x, z, 0.55, 1); else G.trample.stamp(x, z, 0.9, 1, F.fx * 0.4, F.fz * 0.4, 1);
     G.snow.onImpact(p, this.aim, 'land');
     G.snow.stamp(x, z, 0.5, 0.45, this.aim, 1, 1);
     G.leaves.onImpact(p, 'roll', 8);
     if (s.leaves > 0.15) G.leaves.kick(x, z, 1.3, 1.6, F.fx * 5, F.fz * 5);
     if (s.wheat > 0.35) pz.emit('seed', x, y + 0.5, z, F.fx * 2, 2.2, F.fz * 2, 1.6, 22);
     else if (s.snow > 0.4) pz.emit('snow', x, y + G.snow.depthAt(x, z), z, F.fx * 1.5, 2.6, F.fz * 1.5, 2.0, 40);
-    else if (s.grass > 0.3 && s.path < 0.4) pz.emit('grass', x, y + 0.2, z, F.fx * 2, 3.0, F.fz * 2, 2.0, 14);
+    else if (s.blades > 0.3 && s.path < 0.4) pz.emit('grass', x, y + 0.2, z, F.fx * 2, 3.0, F.fz * 2, 2.0, 14);
     pz.emit('dust', x, y + 0.05, z, F.fx * 1.2, 1.0, F.fz * 1.2, 1.4, 12);
     if (G.storm && G.storm.charged) {
       G.leaves.singe(x, z, 2.6, 1);
