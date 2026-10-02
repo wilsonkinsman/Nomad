@@ -1,36 +1,77 @@
 // Brackenford: a market village on the level ground south of the road, east of the crossroads. Whitewashed stone
-// houses and timbered upper floors under orange tile roofs stand round a cobbled square with a well in the middle;
-// a lane runs up to the road and alleys out the other three ways. There is an inn (the Green Frog), a smithy with
-// an open forge, a bakery and a merchant's, market stalls under striped awnings, tables of pottery, benches,
-// barrels and crates, a hay cart, flowers at the windows, bunting across the square, smoke from the chimneys, and
-// at night lit windows and lanterns. Everything is built here from parts (buildings.js) and painted textures
-// (villagetex.js), and merged by material into a few meshes. The villagers who live here are in villagers.js; this
-// gives them their streets (a graph of places to walk between), their doors and the spots where they stop.
+// houses and timbered upper floors under orange tile roofs stand round a cobbled square with a well in the middle,
+// and the village straggles out from it the way villages do: a row of houses along the east road, a cobbled street
+// winding east to a green round an old tree and a little chapel, and a dirt lane wandering south past a duck pond.
+// There is an inn (the Green Frog), a smithy with an open forge, a bakery and a merchant's, market stalls under
+// striped awnings, tables of pottery, benches, barrels and crates, a hay cart, gardens, flowers at the windows,
+// bunting across the square, washing on a line, smoke from the chimneys, and at night lit windows and lanterns.
+// Every house can be gone into: its door swings open as you come to it, and inside it is furnished (interiors.js)
+// and lit by its fire. Everything is built from parts (buildings.js) and painted textures (villagetex.js), and
+// merged by material into a few meshes. The villagers who live here are in villagers.js; this gives them their
+// streets (a graph of places to walk between, indoors and out), their doors and the spots where they stop.
 import * as THREE from 'three';
-import { groundY, VILLAGE, setPaving, P as PATH, ZRES, HALF, H, HRES } from './world.js';
-import { Builder } from './buildings.js';
-import { stoneWall, plaster, roofTiles, cobbles, doorTex, windowTex, stripes, signTex } from './villagetex.js';
+import { mergeGeometries } from '../lib/utils/BufferGeometryUtils.js';
+import { groundY, VILLAGE, setPaving, P as PATH, ZRES, HALF, H, HRES, PATHS } from './world.js';
+import { Builder, doorLeaf, DOORWAY } from './buildings.js';
+import { Furnisher } from './interiors.js';
+import { stoneWall, plaster, roofTiles, cobbles, doorTex, windowTex, stripes, signTex, stainedGlass, rugTex } from './villagetex.js';
 import { boxCollider, inside } from './collide.js';
-import { mulberry32, smoothstep, vnoise, GLSL_NOISE } from './util.js';
+import { mulberry32, smoothstep, vnoise, damp, GLSL_NOISE } from './util.js';
 
 const PI = Math.PI;
 const box = (w, h, d, x = 0, y = 0, z = 0) => new THREE.BoxGeometry(w, h, d).translate(x, y, z);
 
-// the houses (rot is the way the front faces: 0 south, PI north, PI/2 east, -PI/2 west), each with what it is
+// the houses (rot is the way the front faces: 0 south, PI north, PI/2 east, -PI/2 west; none quite square to the
+// others), each with what it is and what is inside it
 export const HOUSES = [
-  { name: 'inn', x: 39, z: 7.5, rot: 0, w: 12, d: 8, floors: 2, upper: 'timber', dormers: 3, chimneys: [[-4.3, -1.4], [3.9, 1.2]], door: -1.6, seed: 1, flowers: 0.7, sign: ['inn', 'The Green Frog', 3.4] },
-  { name: 'smithy', x: 56, z: 7.8, rot: 0, w: 10, d: 7.6, floors: 1, pitch: 0.72, chimneys: [[3.4, -1.2]], door: -2.4, seed: 2, flowers: 0.15, tint: 0xf2ece0, sign: ['smith', 'Smithy', -4.2] },
-  { name: 'goods', x: 31, z: 16, rot: PI / 2, w: 7, d: 8, floors: 2, upper: 'stone', balcony: true, chimneys: [[2.2, -2.2]], door: 0, seed: 3, flowers: 0.6, tint: 0xfff6e8, sign: ['goods', 'Wares & Sundries', 2.9] },
-  { name: 'house', x: 31, z: 26.8, rot: PI / 2, w: 7.2, d: 8, floors: 2, upper: 'timber', chimneys: [[-2, 1.6]], door: 1.2, seed: 4, flowers: 0.5 },
-  { name: 'bakery', x: 41, z: 35.2, rot: PI, w: 9, d: 8, floors: 2, upper: 'timber', dormers: 2, chimneys: [[-3, 1.8]], door: 1.6, seed: 5, flowers: 0.4, sign: ['bread', 'Bakery', -3.4] },
-  { name: 'house', x: 55.2, z: 35, rot: PI, w: 8, d: 7, floors: 2, upper: 'stone', chimneys: [[2.5, 0.4]], door: -1, seed: 6, flowers: 0.8, tint: 0xf6ead8 },
-  { name: 'house', x: 66.2, z: 15.3, rot: -PI / 2, w: 7, d: 8, floors: 2, upper: 'stone', balcony: true, door: 1.6, seed: 7, flowers: 0.6 },
-  { name: 'house', x: 66.2, z: 26.2, rot: -PI / 2, w: 8, d: 8, floors: 2, upper: 'timber', chimneys: [[-2.5, -1.5]], door: -1.5, seed: 8, flowers: 0.4 },
+  // round the square
+  { name: 'inn', kind: 'inn', x: 39, z: 7.5, rot: 0.03, w: 12, d: 8, floors: 2, upper: 'timber', dormers: 3, chimneys: [[-4.3, -1.4], [3.9, 1.2]], door: -1.6, seed: 1, flowers: 0.7, sign: ['inn', 'The Green Frog', 3.4] },
+  { name: 'smithy', kind: 'smithy', x: 56, z: 7.8, rot: -0.02, w: 10, d: 7.6, floors: 1, pitch: 0.72, chimneys: [[3.4, -1.2]], door: -2.4, seed: 2, flowers: 0.15, tint: 0xf2ece0, sign: ['smith', 'Smithy', -4.2] },
+  { name: 'goods', kind: 'goods', x: 31, z: 16, rot: PI / 2 + 0.04, w: 7, d: 8, floors: 2, upper: 'stone', balcony: true, chimneys: [[2.2, -2.2]], door: 0, seed: 3, flowers: 0.6, tint: 0xfff6e8, sign: ['goods', 'Wares & Sundries', 2.9] },
+  { name: 'house', kind: 'home', x: 31, z: 26.8, rot: PI / 2 - 0.05, w: 7.2, d: 8, floors: 2, upper: 'timber', chimneys: [[-2, 1.6]], door: 1.2, seed: 4, flowers: 0.5 },
+  { name: 'bakery', kind: 'bakery', x: 41, z: 35.2, rot: PI + 0.03, w: 9, d: 8, floors: 2, upper: 'timber', dormers: 2, chimneys: [[-3, 1.8]], door: 1.6, seed: 5, flowers: 0.4, sign: ['bread', 'Bakery', -3.4] },
+  { name: 'house', kind: 'home', x: 55.2, z: 35, rot: PI - 0.06, w: 8, d: 7, floors: 2, upper: 'stone', chimneys: [[2.5, 0.4]], door: -1, seed: 6, flowers: 0.8, tint: 0xf6ead8 },
+  { name: 'house', kind: 'home', x: 66.2, z: 15.3, rot: -PI / 2 + 0.05, w: 7, d: 8, floors: 2, upper: 'stone', balcony: true, door: 1.6, seed: 7, flowers: 0.6 },
+  { name: 'house', kind: 'home', x: 66.2, z: 26.2, rot: -PI / 2 - 0.04, w: 8, d: 8, floors: 2, upper: 'timber', chimneys: [[-2.5, -1.5]], door: -1.5, seed: 8, flowers: 0.4 },
+  // along the east road, facing it, each with a path down to it
+  { name: 'house', kind: 'home', x: 71.6, z: 2.9, rot: -2.91, w: 8, d: 7, floors: 2, upper: 'stone', chimneys: [[2.6, -1.2]], door: 1.2, seed: 10, flowers: 0.6, tint: 0xf8eedc, path: true },
+  { name: 'house', kind: 'home', x: 81.8, z: 0.5, rot: -2.91, w: 9, d: 7.5, floors: 2, upper: 'timber', dormers: 2, chimneys: [[-3, 0.8]], door: -1.5, seed: 11, flowers: 0.5, path: true },
+  { name: 'house', kind: 'home', x: 94.6, z: -2.6, rot: -2.91, w: 7, d: 6.5, floors: 1, pitch: 0.78, chimneys: [[-2.2, 0]], door: 0.8, seed: 12, flowers: 0.7, path: true },
+  // the east street, out to the green and the chapel
+  { name: 'house', kind: 'home', x: 79.5, z: 13.8, rot: 0.12, w: 8, d: 7, floors: 2, upper: 'timber', chimneys: [[3, -1]], door: -1.2, seed: 13, flowers: 0.6, balcony: true },
+  { name: 'house', kind: 'home', x: 78.6, z: 29.3, rot: PI - 0.1, w: 8, d: 6.5, floors: 2, upper: 'stone', chimneys: [[-2.8, 0.5]], door: 1.0, seed: 14, flowers: 0.6, tint: 0xf4ecdc },
+  { name: 'house', kind: 'home', x: 97.4, z: 11.8, rot: -0.45, w: 7.5, d: 7, floors: 2, upper: 'stone', dormers: 1, chimneys: [[2.4, 0.6]], door: 0.6, seed: 15, flowers: 0.5 },
+  { name: 'house', kind: 'home', x: 87.5, z: 36, rot: PI + 0.25, w: 7, d: 6.5, floors: 1, pitch: 0.8, chimneys: [[2.3, -0.4]], door: -0.8, seed: 16, flowers: 0.7, tint: 0xfaf0e2 },
+  // down the south lane
+  { name: 'house', kind: 'home', x: 41.5, z: 47.8, rot: PI / 2 + 0.12, w: 7, d: 7, floors: 2, upper: 'timber', chimneys: [[-2.4, -1]], door: 0.9, seed: 17, flowers: 0.5 },
+  { name: 'house', kind: 'home', x: 57.5, z: 45, rot: 0.06, w: 8, d: 7, floors: 2, upper: 'stone', chimneys: [[2.8, -0.8]], door: -1.4, seed: 18, flowers: 0.7 },
+  { name: 'house', kind: 'home', x: 64.5, z: 55.5, rot: PI - 0.15, w: 7, d: 6, floors: 1, pitch: 0.8, chimneys: [[-2.2, 0.3]], door: 0.6, seed: 19, flowers: 0.6, tint: 0xf6ead6 },
+  { name: 'house', kind: 'home', x: 75.2, z: 47.5, rot: -PI / 2 - 0.25, w: 7, d: 6.5, floors: 2, upper: 'timber', chimneys: [[2.2, 1]], door: -0.8, seed: 20, flowers: 0.5 },
 ];
+// the chapel at the end of the east street, its door toward the green
+export const CHAPEL = { x: 98.5, z: 36, rot: -2.633, W: 7.2, L: 12.5, H: 4.8 };
 export const SQUARE = { x0: 35, x1: 62.2, z0: 11.6, z1: 31.2, r: 2.5 };
 export const WELL = { x: 48, z: 21.5 };
-// the lane to the road and the alleys: [from, to, half width]
-const LANES = [[[48, -1.8], [48, 12], 2.4], [[24, 21.3], [36, 21.3], 1.5], [[61, 20.5], [73, 20.5], 1.5], [[48.3, 30], [48.3, 42], 2.2]];
+// the cobbled streets: [points, half width]: the lane up to the road, the alleys off the square, the east street
+// out to the green and on to the chapel door
+const STREETS = [
+  [[[48, -1.8], [48, 12]], 2.4], [[[24, 21.3], [36, 21.3]], 1.5], [[[48.3, 30], [48.3, 42]], 2.2],
+  [[[61, 20.5], [67, 20.6], [71, 20.6]], 1.3], [[[71, 20.6], [73, 20.6], [78.5, 21.4], [84, 22.2], [86.4, 21.6]], 1.8],
+  [[[93.2, 23.6], [94.4, 27.2], [94.8, 29.0]], 1.5],
+];
+// the green: a ring of cobbles round the old tree
+export const GREEN = { x: 90, z: 20, r0: 2.0, r1: 5.4 };
+// the dirt lanes: the south lane, the path from the green up to the road, the way down to the pond, and each road
+// house's path down to the road
+export const POND = { x: 67.2, z: 42.5, r: 3.0 };
+const DIRT = [
+  [[[48.3, 41], [48.8, 45.5], [51.6, 49.8], [58.4, 50.5], [63.5, 50.4], [66.8, 50.0], [70.2, 48.0]], 1.35],
+  [[[89.6, 15.2], [88.8, 9.5], [88.6, 3.5], [88.4, -5.6]], 1.2], [[[66.4, 49.8], [67.0, 46.4]], 0.9],
+  ...HOUSES.filter((s) => s.path).map((s) => {
+    const c = Math.cos(s.rot), n = Math.sin(s.rot), at = (lx, lz) => [s.x + lx * c + lz * n, s.z - lx * n + lz * c];
+    return [[at(s.door, s.d / 2 + 0.4), at(s.door, s.d / 2 + 4.2)], 0.8];
+  }),
+];
 // where the smith works, and his forge
 export const SMITHY = { anvil: [63.25, 8.7], spot: [62.35, 8.7], forge: [62.3, 5.9] };
 
@@ -44,16 +85,45 @@ function sdSeg(x, z, [ax, az], [bx, bz], hw) {
   const dx = bx - ax, dz = bz - az, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)));
   return Math.hypot(ax + dx * t - x, az + dz * t - z) - hw;
 }
+function sdLine(x, z, pts, hw) { let d = Infinity; for (let i = 0; i < pts.length - 1; i++) d = Math.min(d, sdSeg(x, z, pts[i], pts[i + 1], hw)); return d; }
 // how far (x, z) is outside the paving (negative inside)
 export function paveSDF(x, z) {
   let d = sdRect(x, z, SQUARE);
-  for (const [a, b, hw] of LANES) d = Math.min(d, sdSeg(x, z, a, b, hw));
+  for (const [pts, hw] of STREETS) d = Math.min(d, sdLine(x, z, pts, hw));
+  const g = Math.hypot(x - GREEN.x, z - GREEN.z);
+  d = Math.min(d, Math.max(g - GREEN.r1, GREEN.r0 - g));
   return d + (vnoise(x * 1.7, z * 1.7) - 0.5) * 0.35;
 }
+function dirtSDF(x, z) { let d = Infinity; for (const [pts, hw] of DIRT) d = Math.min(d, sdLine(x, z, pts, hw)); return d + (vnoise(x * 0.9, z * 0.9) - 0.5) * 0.6; }
 const paving = (x, z) => 1 - smoothstep(-0.2, 0.2, paveSDF(x, z));
-const MASK = { x0: 20, z0: -6, size: 58, res: 256 };
+const MASK = { x0: 20, z0: -8, size: 86, res: 384 };
+// the whole village's extent
+const BOUND = VILLAGE.rects.reduce((b, [a, c, d, e]) => [Math.min(b[0], a), Math.max(b[1], c), Math.min(b[2], d), Math.max(b[3], e)], [Infinity, -Infinity, Infinity, -Infinity]);
 // bare earth: the floor of the smithy's lean-to, round the hay, at the foot of the tower ([x0, x1, z0, z1])
 const BARE = [[60.6, 65.6, 3.8, 11.8], [27.6, 31.6, 5.2, 7.4], [67.8, 73.4, 31.2, 36.4]];
+
+// Before the ground is drawn: level it under each house (a little beyond its walls) to one height, so its floor is
+// flat and the ground outside its door meets it, and dig the pond
+export function levelVillage() {
+  const level = (x, z, rot, hw, hd) => {
+    const c = Math.cos(rot), s = Math.sin(rot), R = Math.hypot(hw, hd), cells = [];
+    let sum = 0;
+    for (let j = Math.floor(z - R); j <= Math.ceil(z + R); j++) for (let i = Math.floor(x - R); i <= Math.ceil(x + R); i++) {
+      const dx = i - x, dz = j - z, lx = dx * c - dz * s, lz = dx * s + dz * c;
+      if (Math.abs(lx) > hw || Math.abs(lz) > hd) continue;
+      const k = (j + HALF) * HRES + (i + HALF); cells.push(k); sum += H[k];
+    }
+    const y = sum / cells.length;
+    for (const k of cells) H[k] = y;
+  };
+  for (const s of HOUSES) level(s.x, s.z, s.rot, s.w / 2 + 0.9, s.d / 2 + 0.9);
+  level(CHAPEL.x, CHAPEL.z, CHAPEL.rot, CHAPEL.W / 2 + 1.0, CHAPEL.L / 2 + 1.8);
+  const { x, z, r } = POND;
+  for (let j = Math.floor(z - r - 3); j <= Math.ceil(z + r + 3); j++) for (let i = Math.floor(x - r - 3); i <= Math.ceil(x + r + 3); i++) {
+    const d = Math.hypot(i - x, j - z);
+    H[(j + HALF) * HRES + (i + HALF)] -= 0.6 * (1 - smoothstep(r - 1.4, r + 1.6, d));
+  }
+}
 
 // ------------------------------------------------------------------------------ small things
 const POTS = [
@@ -71,35 +141,61 @@ export class Village {
     this.colliders = [];        // houses and the tower are boxes; everything else small is a circle
     this.blockers = [];         // what the camera keeps in front of
     this.seats = []; this.spots = []; this.stalls = []; this.doors = [];
-    this.signs = []; this.lanterns = []; this.chimneys = [];
+    this.signs = []; this.lanterns = []; this.chimneys = []; this.rugs = [[], [], [], []];
     const rnd = this.rnd = mulberry32(404);
-    this.T = { stone: stoneWall(), plaster: plaster(), roof: roofTiles(), cob: cobbles(), door: doorTex(), win: windowTex() };
+    this.T = { stone: stoneWall(), plaster: plaster(), roof: roofTiles(), cob: cobbles(), door: doorTex(), win: windowTex(), stained: stainedGlass() };
     this.pave(game);
     const B = this.B = new Builder();
-    // the houses, and the tower behind the last of them
-    this.houses = HOUSES.map((spec) => {
-      const h = B.house(spec);
-      h.spec = spec; h.name = spec.name;
-      this.colliders.push(h.collider); this.blockers.push(h.collider);
-      this.doors.push({ x: h.door.x, z: h.door.z, heading: h.door.heading, house: h });
-      this.chimneys.push(...h.smoke.map((p) => ({ p, k: spec.name === 'bakery' || spec.name === 'inn' ? 1 : 0.6 })));
-      return h;
-    });
+    // the houses and the chapel, and the tower behind the square
+    this.houses = HOUSES.map((spec) => this.addHouse(B.house(spec), spec));
+    this.chapel = this.addHouse(B.chapel(CHAPEL), { ...CHAPEL, name: 'chapel', kind: 'chapel', w: CHAPEL.W, d: CHAPEL.L, door: 0 });
+    this.houses.push(this.chapel);
     const tw = B.tower({ x: 70.6, z: 33.8, size: 4.2, height: 11, seed: 9 });
     this.colliders.push(tw.collider); this.blockers.push(tw.collider);
     this.smithy(B);
     this.well(B, WELL.x, WELL.z);
     this.market(B);
     this.dressing(B, rnd);
+    this.outskirts(B, rnd);
     for (const h of this.houses) if (h.spec.sign) this.hangSign(B, h, ...h.spec.sign);
     this.bunting(B, [38.5, 11.9], [52.5, 31.0], 5.2, [0xc8423a, 0xe8c050, 0x3a6aa8, 0xf2ede0, 0x4a8a4a]);
     this.bunting(B, [35.2, 25.2], [62.0, 17.2], 5.0, [0xe8c050, 0xc8423a, 0xf2ede0, 0x3a6aa8]);
+    this.bunting(B, [74.6, 18.4], [77.2, 25.6], 4.6, [0x3a6aa8, 0xf2ede0, 0xc8423a]);
+    // and what is inside them
+    const F = new Furnisher(this, B);
+    for (const h of this.houses) F.furnish(h, h.kind);
     this.build(game, B.merged());
+    this.hangDoors(game);
+    this.duckPond(game);
     for (const c of this.colliders) c.village = true;
     this.graph();
     this.mark = game.hud.addMark('⌂', 'zone');
-    this.smokeT = 0; this.night = null;
+    this.smokeT = 0; this.night = null; this.bellT = 20;
+    // the light indoors: one lamp and one firelight, which go to whichever house he is in or at the door of
+    this.lamp = new THREE.PointLight(0xffc890, 0, 10, 1.4);
+    this.fireLight = new THREE.PointLight(0xff8a3a, 0, 7, 1.6);
+    game.scene.add(this.lamp, this.fireLight);
+    this.lit = null; this.litK = 0;
+    game.rig.ceiling = (x, z) => this.ceilingAt(x, z);
   }
+
+  addHouse(h, spec) {
+    h.spec = spec; h.name = spec.name; h.kind = spec.kind;
+    this.colliders.push(...h.walls); this.blockers.push(...h.walls);
+    this.doors.push({ x: h.door.x, z: h.door.z, heading: h.door.heading, house: h });
+    this.chimneys.push(...h.smoke.map((p) => ({ p, k: spec.name === 'bakery' || spec.name === 'inn' ? 1 : 0.6 })));
+    return h;
+  }
+  // the house (x, z) is inside, if any
+  houseAt(x, z, pad = 0) {
+    for (const h of this.houses) {
+      const dx = x - h.x, dz = z - h.z, c = Math.cos(h.rot), s = Math.sin(h.rot), lx = dx * c - dz * s, lz = dx * s + dz * c;
+      if (Math.abs(lx) < h.interior.hw + pad && Math.abs(lz) < h.interior.hd + pad) return h;
+    }
+    return null;
+  }
+  // how high the ceiling is over (x, z), if it is indoors (for the camera)
+  ceilingAt(x, z) { const h = this.houseAt(x, z, 0.2); return h ? h.floor + h.interior.ceil : null; }
 
   // ---------------------------------------------------------------- the ground: cobbles laid, grass worn away
   pave(game) {
@@ -115,24 +211,29 @@ export class Village {
     // the ground's own channels: dirt under and round the cobbles, the rest of the village trodden, no puddles on
     // the stones, and nothing growing under the houses
     const texel = HALF * 2 / ZRES, footprint = HOUSES.map((s) => boxCollider(s.x, s.z, s.w / 2 + 0.3, s.d / 2 + 0.5, s.rot));
+    footprint.push(boxCollider(CHAPEL.x, CHAPEL.z, CHAPEL.W / 2 + 0.6, CHAPEL.L / 2 + 0.6, CHAPEL.rot));
     for (let j = 0; j < ZRES; j++) {
       const z = (j + 0.5) * texel - HALF;
-      if (z < VILLAGE.z0 - 8 || z > VILLAGE.z1 + 8) continue;
+      if (z < BOUND[2] - 8 || z > BOUND[3] + 8) continue;
       for (let i = 0; i < ZRES; i++) {
         const x = (i + 0.5) * texel - HALF;
-        if (x < VILLAGE.x0 - 8 || x > VILLAGE.x1 + 8) continue;
-        const k = (j * ZRES + i) * 4, d = paveSDF(x, z);
-        const edge = Math.max(0, Math.max(VILLAGE.x0 - x, x - VILLAGE.x1, VILLAGE.z0 - z, z - VILLAGE.z1));
-        const worn = 0.14 * (1 - smoothstep(0, 5, edge)) * (0.5 + vnoise(x * 0.3, z * 0.3));
-        let p = Math.max(PATH[k] / 255, 1 - smoothstep(-0.8, 1.1, d), worn);
+        if (x < BOUND[0] - 8 || x > BOUND[1] + 8) continue;
+        const k = (j * ZRES + i) * 4, d = paveSDF(x, z), dd = dirtSDF(x, z);
+        let edge = Infinity;
+        for (const [a, b, c, e] of VILLAGE.rects) edge = Math.min(edge, Math.hypot(Math.max(0, a - x, x - b), Math.max(0, c - z, z - e)));
+        const worn = 0.12 * (1 - smoothstep(0, 5, edge)) * (0.5 + vnoise(x * 0.3, z * 0.3));
+        let p = Math.max(PATH[k] / 255, 1 - smoothstep(-0.8, 1.1, d), (1 - smoothstep(-0.6, 0.9, dd)) * 0.9, worn);
         if (footprint.some((c) => inside(c, x, z)) || BARE.some(([a, b, c, e]) => x > a && x < b && z > c && z < e)) p = 1;
+        // the pond's muddy rim
+        const pd = Math.hypot(x - POND.x, z - POND.z);
+        if (pd < POND.r + 1.2) p = Math.max(p, 0.75 * (1 - smoothstep(POND.r - 0.2, POND.r + 1.2, pd)));
         PATH[k] = Math.min(1, p) * 255;
-        if (d < 1) PATH[k + 1] = 0;
+        if (d < 1 || pd < POND.r + 1.5) PATH[k + 1] = 0;
       }
     }
     game.worldTex.path.needsUpdate = true;
     // the cobbles themselves: the ground's own grid, where it is paved, a few centimetres up, cut to the mask's edge
-    const x0 = Math.floor(VILLAGE.x0 - 2), x1 = Math.ceil(VILLAGE.x1 + 2), z0 = Math.floor(VILLAGE.z0 - 4), z1 = Math.ceil(VILLAGE.z1 + 2);
+    const x0 = Math.floor(BOUND[0] - 2), x1 = Math.ceil(BOUND[1] + 2), z0 = Math.floor(BOUND[2] - 4), z1 = Math.ceil(BOUND[3] + 2);
     const nx = x1 - x0 + 1, nz = z1 - z0 + 1, pos = new Float32Array(nx * nz * 3), uv = new Float32Array(nx * nz * 2), idx = [];
     for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
       const x = x0 + i, z = z0 + j, k = j * nx + i, hi = (z + HALF) * HRES + (x + HALF);
@@ -255,22 +356,21 @@ export class Village {
 
   // ---------------------------------------------------------------- the market: stalls, and tables of pottery
   market(B) {
-    this.stall(B, 37.9, 16.2, PI / 2, 'goods', ['#7a2a24', '#e8dcc0']);
+    this.stall(B, 38.4, 17.7, PI / 2, 'goods', ['#7a2a24', '#e8dcc0']);
     this.stall(B, 55.8, 15.4, -PI / 2 + 0.25, 'produce', ['#2f5a3a', '#e8dcc0']);
     this.stall(B, 41.4, 29.4, PI, 'bread', ['#b8822e', '#f0e6cc']);
     this.stall(B, 39.6, 24.6, PI / 2, 'pottery', ['#3a5a8a', '#efe6d0']);
     // the inn's tables out on the cobbles, and a bench at its wall
     this.table(B, 36.4, 13.9, 0, true);
     this.table(B, 42.3, 14.2, 0.08, true);
-    this.bench(B, 34.8, 12.3, 0);
     // tables of pottery set out on the square, the way they do on market day
     this.table(B, 44.6, 27.3, PI / 2 - 0.1, false, 'pottery');
     this.table(B, 58.4, 23.0, -0.2, false, 'pottery');
     // benches by the well and along the house fronts
     this.bench(B, 52.6, 18.2, -PI / 2 - 0.5);
     this.bench(B, 43.6, 18.6, PI / 2 + 0.4);
-    this.bench(B, 57.0, 30.5, PI);
-    this.bench(B, 61.7, 25.4, -PI / 2);
+    this.bench(B, 53.2, 30.6, PI);
+    this.bench(B, 61.7, 27.3, -PI / 2);
   }
 
   // a stall: a table under a striped awning on four posts, its goods on it; the keeper stands behind it
@@ -351,7 +451,7 @@ export class Village {
       for (const sx of [-1, 1]) B.add('wood', box(0.07, 0.43, 0.24, sx * 0.7, 0.21, sz * 0.72), 1, 0x5a4430);
       for (const u of [-0.45, 0.45]) {
         const c = Math.cos(rot), s = Math.sin(rot), lz = sz * 0.72;
-        this.seats.push({ x: x + u * c + lz * s, z: z - u * s + lz * c, heading: rot + (sz > 0 ? PI : 0), y: y + 0.48, from: -1 });
+        this.seats.push({ kind: 'seat', x: x + u * c + lz * s, z: z - u * s + lz * c, heading: rot + (sz > 0 ? PI : 0), y: y + 0.48, from: -1 });
       }
     }
     this.colliders.push(boxCollider(x, z, 1.0, benches ? 0.9 : 0.45, rot, 1.0));
@@ -364,7 +464,7 @@ export class Village {
     B.add('wood', box(1.7, 0.3, 0.05, 0, 0.75, -0.18).rotateX(-0.12), 1, 0x7a5a3a);
     for (const sx of [-1, 1]) { B.add('wood', box(0.08, 0.45, 0.3, sx * 0.72, 0.22, 0), 1, 0x5a4430); B.add('wood', box(0.07, 0.75, 0.06, sx * 0.72, 0.5, -0.2), 1, 0x5a4430); }
     const c = Math.cos(rot), s = Math.sin(rot);
-    for (const u of [-0.42, 0.42]) this.seats.push({ x: x + u * c + 0.05 * s, z: z - u * s + 0.05 * c, heading: rot, y: y + 0.48, from: 1 });
+    for (const u of [-0.42, 0.42]) this.seats.push({ kind: 'seat', x: x + u * c + 0.05 * s, z: z - u * s + 0.05 * c, heading: rot, y: y + 0.48, from: 1 });
     this.colliders.push(boxCollider(x, z, 0.88, 0.24, rot, 1.0));
   }
 
@@ -462,11 +562,11 @@ export class Village {
     }
     // barrels and crates by the inn and the merchant's, a stack outside the bakery
     this.barrel(B, 45.4, 12.4); this.barrel(B, 44.7, 13.0, 0.9); this.barrel(B, 34.1, 13.4, 1.05);
-    this.crates(B, 35.6, 19.0, PI / 2 + 0.2); this.crates(B, 46.2, 31.6, PI + 0.1);
+    this.crates(B, 46.2, 31.6, PI + 0.1);
     this.barrel(B, 36.3, 31.7); this.sack(B, 36.0, 32.5, rnd);
     this.barrel(B, 51.7, 12.4, 0.95); this.barrel(B, 61.3, 19.2, 0.85);
     // flowers along the house fronts
-    this.planter(B, 60.4, 13.6, -PI / 2, rnd); this.planter(B, 53.1, 31.4, PI, rnd); this.planter(B, 57.6, 31.4, PI, rnd);
+    this.planter(B, 60.4, 13.6, -PI / 2, rnd); this.planter(B, 51.7, 31.4, PI, rnd); this.planter(B, 58.3, 31.5, PI, rnd);
     this.planter(B, 61.6, 28.8, -PI / 2, rnd); this.planter(B, 35.6, 28.6, PI / 2, rnd);
     // the hay cart at the square's edge
     this.cart(B, 59.2, 27.4, 0.35, rnd);
@@ -481,6 +581,108 @@ export class Village {
     this.logs(B, 50.6, 37.2, PI / 2, 1.5, 3);
     // people stand about the square
     for (const [x, z] of [[44, 16.5], [52.5, 25.6], [41.2, 21.8], [55.5, 21], [48.5, 27.5], [47.8, 14.6], [56, 27], [38.6, 19.6]]) this.spots.push({ kind: 'stand', x, z, heading: rnd() * PI * 2 });
+  }
+
+  // ---------------------------------------------------------------- out along the streets
+  outskirts(B, rnd) {
+    // the green: a round bench about the old tree, lanterns about it and down the east street, and to the chapel
+    this.ringBench(B, GREEN.x, GREEN.z);
+    for (const [x, z, r] of [[85.4, 18.2, PI * 0.3], [94.6, 22.0, -PI * 0.6], [93.2, 29.6, -PI * 0.8], [75.2, 18.9, PI], [82.6, 24.4, 0], [53.0, 52.2, PI], [63.0, 48.4, 0], [86.8, -3.0, PI], [46.0, 41.5, PI / 2]]) this.lantern(B, x, z, r);
+    for (let k = 0; k < 6; k++) { const a = k / 6 * PI * 2 + 0.4; this.spots.push({ kind: 'stand', x: GREEN.x + Math.sin(a) * 3.9, z: GREEN.z + Math.cos(a) * 3.9, heading: a + rnd() - 0.5 }); }
+    this.spots.push({ kind: 'stand', x: 94.0, z: 26.4, heading: 0.4 }, { kind: 'stand', x: 80.2, z: 21.6, heading: 2 }, { kind: 'stand', x: 56.0, z: 50.6, heading: 1 });
+    // a planter or a barrel by each outlying door, and a bench by some of them
+    for (const h of this.houses.slice(8)) {
+      if (h.chapel) continue;
+      const S = h.spec, u = S.door + (S.door > 0 ? -1.5 : 1.5), v = S.door + (S.door > 0 ? 1.7 : -1.9);
+      const place = (uu, fn) => { if (Math.abs(uu) > S.w / 2 - 0.75) return; const p = h.at(uu, 0, S.d / 2 + 0.35); fn(p.x, p.z); };
+      place(u, (x, z) => (rnd() < 0.6 ? this.planter(B, x, z, h.rot, rnd) : this.barrel(B, x, z, 0.9)));
+      if (rnd() < 0.55) place(v, (x, z) => { const p = h.at(v, 0, S.d / 2 + 0.45); this.bench(B, p.x, p.z, h.rot); });
+    }
+    // washing on a line behind the road houses, a garden by the last of them, hay
+    this.washing(B, [75.4, 7.9], [81.6, 7.6], rnd);
+    this.garden(B, 99.4, -0.6, 103, 5.2, rnd);
+    for (const [x, z, r] of [[84.2, 6.4, 0.3], [85.5, 6.1, 0.1]]) {
+      const y = groundY(x, z); B.place(x, z, r, y);
+      B.add('flowers', box(1.1, 0.5, 0.55, 0, 0.25, 0), 0, 0xc8a85a);
+      this.colliders.push(boxCollider(x, z, 0.58, 0.32, r, 1.0));
+    }
+    this.logs(B, 60.6, 54.4, 0.2, 1.4, 3);
+    // the pond: water in its hollow, reeds and stones round it
+    const { x, z, r } = POND, wy = groundY(x + r + 0.2, z) - 0.14;
+    B.place(x, z, 0, wy); B.ground = wy - 2;
+    B.add('water', new THREE.CircleGeometry(r + 0.5, 28).rotateX(-PI / 2), 0, 0xffffff);
+    for (let k = 0; k < 7; k++) { const a = rnd() * PI * 2, d = rnd() * r * 0.7; B.add('flowers', new THREE.CircleGeometry(0.16 + rnd() * 0.08, 8, 0.3, PI * 1.8).rotateX(-PI / 2).translate(Math.sin(a) * d, 0.012, Math.cos(a) * d), 0, 0x4a7a32); }
+    for (let k = 0; k < 40; k++) {
+      const a = rnd() * PI * 2, d = r + (rnd() - 0.3) * 0.7, px = x + Math.sin(a) * d, pz = z + Math.cos(a) * d;
+      if (Math.hypot(px - 67.0, pz - 47) < 1.6) continue;                 // the way down to it
+      const gy = groundY(px, pz) - wy, hgt = 0.5 + rnd() * 0.6;
+      if (rnd() < 0.7) B.add('flowers', new THREE.ConeGeometry(0.025, hgt, 4).rotateZ((rnd() - 0.5) * 0.3).translate(px - x, Math.max(gy, 0) + hgt / 2, pz - z), 0, rnd() < 0.5 ? 0x5a7a2a : 0x7a8a3a);
+      else B.add('stone', new THREE.IcosahedronGeometry(0.12 + rnd() * 0.12, 0).scale(1, 0.6, 1).translate(px - x, gy, pz - z), 1, 0xb0a898);
+    }
+    this.colliders.push({ x, z, r: r - 0.3, h: 0.4 });
+    for (const a of [0.2, 2.4, 4.4]) this.spots.push({ kind: 'stand', x: x + Math.sin(a) * (r + 1.3), z: z + Math.cos(a) * (r + 1.3), heading: a + PI, pond: true });
+  }
+
+  // a round bench about the old tree on the green, its seats facing out
+  ringBench(B, x, z) {
+    const y = groundY(x, z);
+    for (let k = 0; k < 8; k++) {
+      const a = k / 8 * PI * 2, r = 1.55;
+      B.place(x + Math.sin(a) * r, z + Math.cos(a) * r, a, y);
+      B.add('wood', box(1.22, 0.06, 0.42, 0, 0.45, 0), 1, 0x7a5a3a);
+      for (const sx of [-1, 1]) B.add('wood', box(0.07, 0.45, 0.34, sx * 0.5, 0.22, 0), 1, 0x5a4430);
+      if (k % 2 === 0) this.seats.push({ kind: 'seat', x: x + Math.sin(a) * (r + 0.05), z: z + Math.cos(a) * (r + 0.05), heading: a, y: y + 0.48, from: 1 });
+    }
+    this.colliders.push({ x, z, r: 1.8, h: 1 });
+  }
+
+  // a washing line between two posts, things hung out on it
+  washing(B, [ax, az], [bx, bz], rnd) {
+    const ya = groundY(ax, az), yb = groundY(bx, bz), L = Math.hypot(bx - ax, bz - az), dx = (bx - ax) / L, dz = (bz - az) / L;
+    B.place(0, 0, 0, Math.min(ya, yb) - 1);
+    for (const [x, z, y] of [[ax, az, ya], [bx, bz, yb]]) { B.add('wood', box(0.08, 2.0, 0.08, x, y - Math.min(ya, yb) + 1 + 1.0, z), 1, 0x6a5038); this.colliders.push({ x, z, r: 0.12, h: 2 }); }
+    const at = (t) => [ax + (bx - ax) * t, Math.min(ya, yb) + 1 + 1.9 - Math.sin(t * PI) * 0.18, az + (bz - az) * t];
+    const C = [0xf2eee4, 0x8a3a2a, 0x3a5a8a, 0xe8dcc0, 0x6a7a4a, 0xf2eee4, 0xd8b860];
+    for (let k = 0; k < 7; k++) {
+      const t = (k + 0.7) / 8, [x, y, z] = at(t), w = 0.4 + rnd() * 0.3, hh = 0.5 + rnd() * 0.4, base = Math.min(ya, yb) - 1;
+      const g = new THREE.PlaneGeometry(w, hh).translate(0, -hh / 2, 0).rotateY(Math.atan2(dx, dz) + PI / 2).translate(x, y - base, z);
+      B.add('flags', g, 0, C[k % C.length]);
+    }
+    for (let k = 0; k < 12; k++) {
+      const [x0, y0, z0] = at(k / 12), [x1, y1, z1] = at((k + 1) / 12), base = Math.min(ya, yb) - 1, len = Math.hypot(x1 - x0, y1 - y0, z1 - z0);
+      const g = new THREE.CylinderGeometry(0.008, 0.008, len, 3).translate(0, len / 2, 0);
+      g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(x1 - x0, y1 - y0, z1 - z0).normalize())).translate(x0, y0 - base, z0);
+      B.add('dark', g, 0, 0xd8d0b8);
+    }
+  }
+
+  // ducks on the pond, paddling round
+  duckPond(game) {
+    const M = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 });
+    this.ducks = [0x2f6a3a, 0x8a6a4a, 0x2f6a3a].map((head, i) => {
+      const g = new THREE.Group(), body = i === 1 ? 0x8a6a4a : 0xb8b0a0;
+      const add = (geo, m, x, y, z) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; g.add(o); return o; };
+      add(new THREE.SphereGeometry(0.12, 10, 8).scale(1, 0.7, 1.6), M(body), 0, 0.05, 0);
+      add(new THREE.SphereGeometry(0.075, 10, 8), M(head), 0, 0.17, 0.15);
+      add(new THREE.ConeGeometry(0.03, 0.08, 6).rotateX(PI / 2).scale(1.4, 0.6, 1), M(0xe0a030), 0, 0.16, 0.25);
+      add(new THREE.ConeGeometry(0.07, 0.12, 6).rotateX(-PI / 2 - 0.5), M(body), 0, 0.1, -0.2);
+      game.scene.add(g);
+      return { g, r: 1.0 + i * 0.6, a: i * 2.1, v: (0.25 + i * 0.07) * (i % 2 ? -1 : 1), ph: i };
+    });
+    this.waterY = groundY(POND.x + POND.r + 0.2, POND.z) - 0.14;
+  }
+
+  // the doors that open: one leaf to each house, hung in its doorway
+  hangDoors(game) {
+    const geo = doorLeaf(), mat = new THREE.MeshStandardMaterial({ map: this.T.door, roughness: 0.8 });
+    for (const h of this.houses) {
+      const pivot = new THREE.Group();
+      pivot.position.copy(h.at(h.doorway.u - DOORWAY.leaf, 0, h.doorway.z));
+      pivot.rotation.y = h.rot;
+      const m = new THREE.Mesh(geo, mat); m.castShadow = true; m.receiveShadow = true;
+      pivot.add(m); game.scene.add(pivot);
+      h.leaf = { pivot, open: 0, mid: h.at(h.doorway.u, 0, h.doorway.z), was: false };
+    }
   }
 
   cart(B, x, z, rot, rnd) {
@@ -607,18 +809,30 @@ export class Village {
       glow: std({ emissive: 0xffb860, emissiveIntensity: 0.2, roughness: 0.4 }),
       coal: std({ color: 0x1a1210, emissive: 0xff5a14, emissiveIntensity: 2.2, roughness: 0.9 }),
       clay: std({ roughness: 0.65 }),
+      // indoors: the daylight in the windows, flames, stained glass, banners and washing
+      windowIn: std({ map: T.win.map, emissiveMap: T.win.emissive, emissive: 0xe4ecf4, emissiveIntensity: 1, roughness: 0.3 }),
+      flame: std({ color: 0xffd890, emissive: 0xff9a30, emissiveIntensity: 3, roughness: 1 }),
+      stained: std({ map: T.stained, emissiveMap: T.stained, emissive: 0xffffff, emissiveIntensity: 0.9, roughness: 0.3 }),
+      flags: std({ map: tx.fabric.map, side: THREE.DoubleSide, roughness: 0.95 }),
     };
     this.meshes = {};
     for (const [k, g] of Object.entries(parts)) {
       if (!g) continue;
       g.computeBoundingSphere();
       const m = new THREE.Mesh(g, M[k]);
-      m.castShadow = !['window', 'windowDark', 'water', 'glow', 'coal', 'door'].includes(k);
+      m.castShadow = !['window', 'windowDark', 'windowIn', 'water', 'glow', 'coal', 'door', 'flame', 'stained'].includes(k);
       m.receiveShadow = true;
       m.matrixAutoUpdate = false;
       game.scene.add(m);
       this.meshes[k] = m;
     }
+    // the rugs, each pattern its own mesh
+    const RUGS = [['#7a2a24', '#d8b860'], ['#2a3a5a', '#c8a050'], ['#4a5a2a', '#e0c890'], ['#8a1a24', '#d8b04a']];
+    this.rugs.forEach((list, v) => {
+      if (!list.length) return;
+      const m = new THREE.Mesh(mergeGeometries(list), new THREE.MeshStandardMaterial({ map: rugTex(RUGS[v][0], RUGS[v][1], v + 1), roughness: 0.95 }));
+      m.receiveShadow = true; game.scene.add(m);
+    });
     // halos round the lanterns at night
     const sprite = new THREE.SpriteMaterial({ map: this.haloTex(), color: 0xffb060, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
     this.halos = this.lanterns.map((p) => { const s = new THREE.Sprite(sprite); s.position.copy(p); s.scale.setScalar(1.6); game.scene.add(s); return s; });
@@ -634,52 +848,116 @@ export class Village {
   }
 
   // ---------------------------------------------------------------- the streets, as a graph for the villagers
-  // nodes are the places to walk through and to; two are joined if one can walk straight from one to the other
+  // nodes are the places to walk through and to, outdoors and in; two are joined if one can walk straight from one
+  // to the other (so into a house only through its doorway)
   graph() {
     const N = this.nodes = [];
-    const add = (x, z, tag) => { const n = { x, z, tag, id: N.length, links: [] }; N.push(n); return n; };
+    const add = (x, z, tag, house = null) => { const n = { x, z, tag, house, id: N.length, links: [] }; N.push(n); return n; };
     // through the square and down the lanes
     for (const x of [38, 43, 48, 53, 58.5]) for (const z of [14.2, 18, 25, 28.6]) add(x, z);
-    for (const [x, z] of [[48, 9], [48, 4], [48, 0], [33, 21.3], [26.5, 21.3], [64, 20.5], [70.5, 20.5], [48.3, 33.5], [48.3, 39.5], [52.5, 21.5], [43.5, 21.5], [48, 24.6], [48, 18.4]]) add(x, z);
-    for (const d of this.doors) d.node = add(d.x, d.z, 'door');
+    for (const [x, z] of [[48, 9], [48, 4], [48, 0], [33, 21.3], [26.5, 21.3], [52.5, 21.5], [43.5, 21.5], [48, 24.6], [48, 18.4]]) add(x, z);
+    // along the streets and lanes out of it, every few metres
+    for (const [pts] of [...STREETS, ...DIRT]) for (let i = 0; i < pts.length - 1; i++) {
+      const [ax, az] = pts[i], [bx, bz] = pts[i + 1], L = Math.hypot(bx - ax, bz - az), n = Math.max(1, Math.round(L / 3.5));
+      for (let k = 0; k <= n; k++) add(ax + (bx - ax) * k / n, az + (bz - az) * k / n);
+    }
+    for (let k = 0; k < 10; k++) { const a = k / 10 * PI * 2; add(GREEN.x + Math.sin(a) * 2.6, GREEN.z + Math.cos(a) * 2.6); add(GREEN.x + Math.sin(a + 0.3) * 4.6, GREEN.z + Math.cos(a + 0.3) * 4.6); }
+    // what stands in the way (only what is near a place, or the way between two, is tried)
+    const cols = this.colliders.filter((c) => !c.soft);
+    const blocked = (x, z, pad) => cols.some((c) => Math.abs(c.x - x) < c.r + pad && Math.abs(c.z - z) < c.r + pad && inside(c, x, z, pad));
+    // a mesh of places over the open ground near the streets and the doors, so that no corner is cut off
+    const doorAt = this.doors.map((d) => [d.x, d.z]), road = PATHS[0];
+    for (let z = BOUND[2]; z <= BOUND[3]; z += 2.5) for (let x = BOUND[0]; x <= BOUND[1]; x += 2.5) {
+      if (!(paveSDF(x, z) < 2 || dirtSDF(x, z) < 2 || sdLine(x, z, road, 0) < 2.5 || Math.hypot(x - POND.x, z - POND.z) < POND.r + 4 || doorAt.some(([a, b]) => Math.hypot(a - x, b - z) < 4.5))) continue;
+      if (this.houseAt(x, z, 0.7) || blocked(x, z, 0.45)) continue;
+      add(x, z, 'ground');
+    }
+    for (const d of this.doors) d.node = add(d.x, d.z, 'door', d.house);
     for (const s of this.spots) s.node = add(s.x, s.z, s.kind);
     // a seat is come at from the front (a bench) or from behind (a bench at a table)
     for (const s of this.seats) s.node = add(s.x + Math.sin(s.heading) * 0.62 * s.from, s.z + Math.cos(s.heading) * 0.62 * s.from, 'seat');
+    // indoors: just inside each door, and each place to sit, sleep, stand or work
+    for (const h of this.houses) {
+      const p = h.at(h.doorway.u, 0, h.doorway.z - 0.95);
+      h.inNode = add(p.x, p.z, 'in', h);
+      for (const [x, z] of h.ways) add(x, z, 'floor', h);
+      // every metre of floor that is clear of the furniture
+      for (let u = -h.interior.hw + 0.5; u <= h.interior.hw - 0.45; u += 1) for (let w = -h.interior.hd + 0.5; w <= h.interior.hd - 0.45; w += 1) {
+        const q = h.at(u, 0, w);
+        if (!blocked(q.x, q.z, 0.36)) add(q.x, q.z, 'floor', h);
+      }
+      for (const s of h.spots) {
+        const [x, z] = s.ap ? s.ap : s.kind === 'seat' ? [s.x + Math.sin(s.heading) * 0.62 * (s.from ?? 1), s.z + Math.cos(s.heading) * 0.62 * (s.from ?? 1)] : [s.x, s.z];
+        s.node = add(x, z, s.kind, h);
+      }
+    }
+    // what lies between two places
     const clear = (a, b) => {
-      const L = Math.hypot(b.x - a.x, b.z - a.z), n = Math.ceil(L / 0.3);
+      const minx = Math.min(a.x, b.x) - 0.4, maxx = Math.max(a.x, b.x) + 0.4, minz = Math.min(a.z, b.z) - 0.4, maxz = Math.max(a.z, b.z) + 0.4;
+      const near = cols.filter((c) => c.x + c.r > minx && c.x - c.r < maxx && c.z + c.r > minz && c.z - c.r < maxz);
+      if (!near.length) return true;
+      const L = Math.hypot(b.x - a.x, b.z - a.z), n = Math.ceil(L / 0.25);
       for (let i = 1; i < n; i++) {
         const x = a.x + (b.x - a.x) * i / n, z = a.z + (b.z - a.z) * i / n;
-        for (const c of this.colliders) if (inside(c, x, z, 0.32)) return false;
+        for (const c of near) if (inside(c, x, z, 0.3)) return false;
       }
       return true;
     };
+    // indoors only near neighbours are joined; outdoors, anything in sight a few strides off
+    const indoor = (n) => n.house && n.tag !== 'door';
     for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {
-      const a = N[i], b = N[j], d = Math.hypot(a.x - b.x, a.z - b.z);
-      if (d > 9 || !clear(a, b)) continue;
+      const a = N[i], b = N[j], dx = Math.abs(a.x - b.x), dz = Math.abs(a.z - b.z), lim = indoor(a) || indoor(b) ? 2.6 : 7.5;
+      if (dx > lim || dz > lim) continue;
+      const d = Math.hypot(dx, dz);
+      if (d > lim || d < 0.05 || !clear(a, b)) continue;
       a.links.push([b, d]); b.links.push([a, d]);
     }
   }
-  // the shortest way through the graph from node a to node b (a list of nodes, a first), or null
+  // the shortest way through the graph from node a to node b (a list of nodes, a first), or null: A*, with the
+  // straight-line distance to b as its guess
   route(a, b) {
-    const N = this.nodes, dist = new Float32Array(N.length).fill(Infinity), prev = new Int32Array(N.length).fill(-1), done = new Uint8Array(N.length);
-    dist[a.id] = 0;
-    for (;;) {
-      let u = -1, best = Infinity;
-      for (let i = 0; i < N.length; i++) if (!done[i] && dist[i] < best) { best = dist[i]; u = i; }
-      if (u < 0) return null;
-      if (u === b.id) break;
-      done[u] = 1;
-      for (const [v, d] of N[u].links) if (dist[u] + d < dist[v.id]) { dist[v.id] = dist[u] + d; prev[v.id] = u; }
+    const N = this.nodes, n = N.length;
+    if (!this._g) { this._g = new Float32Array(n); this._prev = new Int32Array(n); this._seen = new Uint32Array(n); this._hq = new Int32Array(n * 8); this._hf = new Float32Array(n * 8); this._stamp = 0; }
+    const g = this._g, prev = this._prev, seen = this._seen, hq = this._hq, hf = this._hf, stamp = ++this._stamp;
+    const est = (k) => Math.hypot(N[k].x - b.x, N[k].z - b.z);
+    let size = 0;
+    const push = (k, f) => {
+      if (size >= hq.length) return;
+      let i = size++;
+      while (i > 0) { const p = (i - 1) >> 1; if (hf[p] <= f) break; hq[i] = hq[p]; hf[i] = hf[p]; i = p; }
+      hq[i] = k; hf[i] = f;
+    };
+    const pop = () => {
+      const top = hq[0], k = hq[--size], f = hf[size];
+      let i = 0;
+      for (;;) { let c = 2 * i + 1; if (c >= size) break; if (c + 1 < size && hf[c + 1] < hf[c]) c++; if (hf[c] >= f) break; hq[i] = hq[c]; hf[i] = hf[c]; i = c; }
+      hq[i] = k; hf[i] = f;
+      return top;
+    };
+    seen[a.id] = stamp; g[a.id] = 0; prev[a.id] = -1; push(a.id, est(a.id));
+    let found = false;
+    while (size) {
+      const u = pop();
+      if (u === b.id) { found = true; break; }
+      const gu = g[u];
+      for (const [v, w] of N[u].links) {
+        const k = v.id, ng = gu + w;
+        if (seen[k] === stamp && ng >= g[k]) continue;
+        seen[k] = stamp; g[k] = ng; prev[k] = u; push(k, ng + est(k));
+      }
     }
+    if (!found) return null;
     const out = []; for (let u = b.id; u >= 0; u = prev[u]) out.unshift(N[u]);
     return out;
   }
-  // the node nearest (x, z) that can be walked to straight from there
+  // the node nearest (x, z) (in the same house, or outdoors, as the point is)
   nearest(x, z) {
+    const h = this.houseAt(x, z, 0.1);
     let best = null, bd = Infinity;
     for (const n of this.nodes) {
+      if (!n.links.length || (h ? n.house !== h || n.tag === 'door' : n.house && n.tag !== 'door')) continue;
       const d = Math.hypot(n.x - x, n.z - z);
-      if (d < bd && n.links.length) { bd = d; best = n; }
+      if (d < bd) { bd = d; best = n; }
     }
     return best;
   }
@@ -692,7 +970,11 @@ export class Village {
       this.mats.window.emissiveIntensity = night ? 1.6 : 0;
       this.mats.glow.emissiveIntensity = night ? 3.5 : 0.15;
       this.haloMat.opacity = night ? 0.55 : 0;
+      this.mats.windowIn.emissiveIntensity = night ? 0.03 : 1;
+      this.mats.stained.emissiveIntensity = night ? 0.55 : 0.9;
     }
+    // candles and hearths flicker
+    this.mats.flame.emissiveIntensity = 2.6 + 0.6 * Math.sin(t * 11) * Math.sin(t * 7.3 + 2) + 0.3 * Math.sin(t * 23);
     // the forge breathes
     const f = 0.75 + 0.25 * Math.sin(t * 2.3) * Math.sin(t * 3.7 + 1);
     this.mats.coal.emissiveIntensity = 1.6 + 1.2 * f;
@@ -709,10 +991,62 @@ export class Village {
       for (const c of this.chimneys) if (Math.random() < c.k) G.particles.emit('chimney', c.p.x, c.p.y, c.p.z, w.x * 0.6 + (Math.random() - 0.5) * 0.2, 0.7 + Math.random() * 0.3, w.z * 0.6 + (Math.random() - 0.5) * 0.2, 0.3, 1);
       if (Math.random() < 0.5) G.particles.emit('ember', this.forge.x, this.forge.y, this.forge.z, (Math.random() - 0.5) * 0.4, 0.8 + Math.random(), (Math.random() - 0.5) * 0.4, 0.4, 1);
     }
+    this.doorsAndLights(dt, G, night);
+    // the ducks paddle round the pond
+    for (const d of this.ducks) {
+      d.a += d.v * dt / d.r;
+      const x = POND.x + Math.sin(d.a) * d.r, z = POND.z + Math.cos(d.a) * d.r * 0.85;
+      d.g.position.set(x, this.waterY + 0.02 * Math.sin(t * 2 + d.ph), z);
+      d.g.rotation.y = d.a + (d.v > 0 ? PI / 2 : -PI / 2);
+      d.g.rotation.z = 0.05 * Math.sin(t * 1.7 + d.ph);
+    }
+    // the chapel bell, now and then
+    this.bellT -= dt;
+    if (this.bellT <= 0) {
+      this.bellT = 150 + Math.random() * 120;
+      const d = Math.hypot(P.pos.x - this.chapel.x, P.pos.z - this.chapel.z);
+      if (d < 70 && G.state === 'play') G.audio?.bell?.(Math.max(0.15, 1 - d / 70));
+    }
     // the compass
     if (this.mark) this.mark.bearing = (Math.atan2(VILLAGE.x - P.pos.x, -(VILLAGE.z - P.pos.z)) * 180 / PI + 360) % 360;
   }
 }
+
+// the doors open for whoever comes to them, and close behind; the house he is in, or at the door of, is lit
+// from inside by a lamp and its fire
+Village.prototype.doorsAndLights = function (dt, G, night) {
+  const P = G.player, folk = G.villagers?.list || [], t = G.time;
+  for (const h of this.houses) {
+    const L = h.leaf, m = L.mid;
+    if (Math.abs(m.x - P.pos.x) > 40 || Math.abs(m.z - P.pos.z) > 40) continue;
+    let want = Math.hypot(P.pos.x - m.x, P.pos.z - m.z) < 2.1;
+    if (!want) for (const v of folk) if (v.mesh.visible && Math.abs(v.pos.x - m.x) < 1.6 && Math.abs(v.pos.z - m.z) < 1.6) { want = true; break; }
+    if (want && !L.was && L.open < 0.1 && Math.hypot(P.pos.x - m.x, P.pos.z - m.z) < 12) G.audio?.door?.(true);
+    L.was = want;
+    L.open = want ? Math.min(1, L.open + dt * 2.2) : Math.max(0, L.open - dt * 1.1);
+    const e = L.open * L.open * (3 - 2 * L.open);
+    L.pivot.rotation.y = h.rot + 1.75 * e;
+  }
+  // which house: the one he is in, or the one whose door he is nearest (within a few metres)
+  let h = this.houseAt(P.pos.x, P.pos.z, 0.3), k = 1;
+  if (!h) {
+    let bd = 6;
+    for (const o of this.houses) { const d = Math.hypot(o.leaf.mid.x - P.pos.x, o.leaf.mid.z - P.pos.z); if (d < bd) { bd = d; h = o; } }
+    k = h ? 0.25 + 0.75 * h.leaf.open * (1 - bd / 6) : 0;
+  }
+  if (h && h !== this.lit) {
+    this.lit = h;
+    this.lamp.position.copy(h.at(0, Math.min(h.interior.ceil - 0.4, 2.6), 0));
+    if (h.fires.length) this.fireLight.position.copy(h.fires[0]).add(new THREE.Vector3(0, 0.3, 0));
+  }
+  this.litK = damp(this.litK, k, 4, dt);
+  if (G.post) G.post.indoor = G.rig.indoor;
+  const fl = 0.85 + 0.15 * Math.sin(t * 9.1) * Math.sin(t * 5.3 + 1);
+  this.lamp.intensity = this.litK * (night ? 2.2 : 2.6);
+  this.fireLight.intensity = this.lit?.fires.length ? this.litK * (night ? 1.6 : 1.1) * fl : 0;
+  // sparks up from the fire he is by
+  if (this.lit && this.litK > 0.5) for (const f of this.lit.fires) if (Math.random() < dt * 3) G.particles.emit('ember', f.x, f.y + 0.2, f.z, (Math.random() - 0.5) * 0.2, 0.5 + Math.random() * 0.6, (Math.random() - 0.5) * 0.2, 0.2, 1);
+};
 
 function mergeGeo(list) {
   const out = [];

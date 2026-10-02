@@ -4,7 +4,7 @@
 // tree in the wheat, and snow-laden pines on the rise.
 import * as THREE from 'three';
 import { mergeGeometries } from '../lib/utils/BufferGeometryUtils.js';
-import { groundY, surfaceAt, ZONES, SPAWN, inVillage } from './world.js';
+import { groundY, surfaceAt, ZONES, SPAWN, cleared } from './world.js';
 import { GLSL_WIND } from './wind.js';
 import { addTranslucency } from './grass.js';
 import { mulberry32, GLSL_NOISE } from './util.js';
@@ -155,7 +155,7 @@ export class Trees {
 
     // the village has been built where these stood (they are still placed, so that everything placed after them
     // stays where it was, but never grown)
-    for (const t of this.list) t.gone = inVillage(t.x, t.z, 1);
+    for (const t of this.list) t.gone = cleared(t.x, t.z);
 
     // materials
     const barkM = new THREE.MeshStandardMaterial({ map: tx.bark.map, normalMap: tx.bark.normal, roughness: 0.95 });

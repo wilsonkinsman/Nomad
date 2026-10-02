@@ -35,7 +35,7 @@ import { Boss } from './boss.js';
 import { Fairies } from './fairies.js';
 import { Quests } from './quests.js';
 import { Updraft } from './updraft.js';
-import { Village } from './village.js';
+import { Village, levelVillage } from './village.js';
 import { Villagers } from './villagers.js';
 
 const QUALITY = {
@@ -93,6 +93,7 @@ addEventListener('resize', applyQuality);
 async function boot() {
   await progress(0.05, 'Shaping the land…');
   World.bake();
+  levelVillage();                          // the ground under each of the village's houses, made flat for its floor
   await progress(0.3, 'Painting the ground…');
   const tex = World.makeTextures();
   game.worldTex = tex;

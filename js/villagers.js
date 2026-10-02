@@ -4,12 +4,14 @@
 // their hands, sitting on a bench, leaning over a stall, waving, and working (the smith at his anvil, the innkeeper
 // polishing a mug, the stallholders at their wares).
 //
-// The wanderers walk the village's streets (Village.graph: places to go and the straight ways between them), stop
-// at the stalls and the well, sit on the benches, chat when two of them stand close, and go in at their doors and
-// come out again a while later; at night most of them stay in. They step round each other and round him, turn their
-// heads to watch him go by and greet him, and scatter for their doors if he swings his sword among them. The
-// stallholders, the innkeeper and the smith keep their places, and talk to him (in the dialog box at the foot of
-// the screen) when he stops in front of them. And there is a cat.
+// Each of the wanderers has a home. They walk the village's streets and in at its doors (Village.graph: places to
+// go, indoors and out, and the straight ways between them), stop at the stalls and the well and the pond, sit on the
+// benches, chat when two of them stand close, go home to sit at their own table or warm themselves at the hearth,
+// browse in the shops, take a bench at the inn or a pew in the chapel; at night most go home to bed (and lie
+// there asleep), and some to the inn. They step round each other and round him, turn their heads to watch him go
+// by and greet him, and run home if he swings his sword among them. The stallholders, the smith, and the people
+// who keep the inn, the shop counter, the bakehouse, the smithy's showroom and the chapel keep their places, and
+// talk to him (in the dialog box at the foot of the screen) when he stops in front of them. And there is a cat.
 import * as THREE from 'three';
 import { mergeGeometries } from '../lib/utils/BufferGeometryUtils.js';
 import { groundY } from './world.js';
@@ -50,8 +52,16 @@ const KEEPERS = {
     lines: ['Fresh loaves! Still warm from the oven.', 'Up before the cock every morning, I am. The bread doesn\'t bake itself.', 'A wanderer, is it? Take a heel of bread. No charge for anyone who keeps the roads safe.'] },
   pottery: { name: 'Edda the potter', man: false, hat: 'none', hair: 'bun', apron: 0xa88a6a, work: 'tend',
     lines: ['Jugs, bowls, pots for the hearth. All thrown on my own wheel.', 'Careful with that sword near my pots, now.', 'The blue glaze? Ground from a stone they bring down from the snowy rise.'] },
-  inn: { name: 'Marta of the Green Frog', man: false, hat: 'coif', apron: 0xece6d8, work: 'wipe', dress: 0x5a6a44,
-    lines: ['Welcome to the Green Frog! The rooms are full, but the ale is cold.', 'Sit yourself down at one of the tables. Mind the bench, it wobbles.'],
+  agnes: { name: 'Agnes of Wares & Sundries', man: false, hat: 'coif', apron: 0xd8c8a0, work: 'tend', dress: 0x3a4a6a,
+    lines: ['Welcome in. Osric minds the stall outside; I mind everything else.', 'Lamp oil, rope, wool, needles, nails... if we haven\'t got it, you don\'t need it.', 'Mind the barrels by the door. Full of nails, the lot of them.'] },
+  pip: { name: 'Pip, the baker\'s boy', man: true, hat: 'cap', apron: 0xf2eee4, work: 'tend',
+    lines: ['Hilde has me up at four every morning, kneading.', 'Want to see the oven? Don\'t touch it. I did, once.', 'The trick is to let it rise twice. Don\'t tell her I told you.'] },
+  tom: { name: 'Tom, the smith\'s apprentice', man: true, hat: 'none', hair: 'short', apron: 0x4a3424, work: 'tend', bare: true,
+    lines: ['Bram made every one of these. One day I\'ll make one half as good.', 'Look all you like. Swords on the wall, armour on the stands.', 'That\'s a fine blade you carry. Don\'t let Bram see it, he\'ll want to take it apart.'] },
+  priest: { name: 'Brother Aldous', man: true, hat: 'hood', robe: 0x5a4a3a, top: 0x5a4a3a, work: 'pray', night: true, grey: true,
+    lines: ['Peace to you, traveller. Sit a while if you like. It is quiet here.', 'The bell? I ring it when the mood takes me. Folk say it keeps the oni away. It doesn\'t.', 'The windows came from the city, three winters ago. Every one of them carried up the road by hand.'] },
+  inn: { name: 'Marta of the Green Frog', man: false, hat: 'coif', apron: 0xece6d8, work: 'wipe', dress: 0x5a6a44, night: true,
+    lines: ['Welcome to the Green Frog! The rooms are full, but the ale is cold.', 'Sit yourself down at one of the tables. Mind the bench by the fire, it wobbles.'],
     oni: ['A red oni has made his camp at the old ring of stones, south of here. Folk daren\'t go that way.', 'If you mean to face him, eat something first. Nobody fights well hungry.'],
     oniDone: ['You chased off the oni? Then your first drink is on the house!', 'They\'re already singing about it in the back room. Badly.'] },
   smith: { name: 'Bram the smith', man: true, hat: 'none', hair: 'short', beard: true, apron: 0x4a3424, work: 'hammer', bare: true,
@@ -59,6 +69,9 @@ const KEEPERS = {
 };
 const GREET = ['Good morrow.', 'Fair weather today.', 'Traveller.', 'Mind the well, it\'s deep.', 'Have you seen my cat?', 'Lovely day for it.', 'You\'re not from round here.', 'Welcome to Brackenford.', 'Morning!', 'Watch your step.'];
 const GREET_NIGHT = ['Evening.', 'Late to be about.', 'Mind how you go.', 'Fine night.'];
+const GREET_IN = ['Oh! Come in, then.', 'Shut the door behind you.', 'Make yourself at home.', 'Can I help you?', 'Wipe your feet!'];
+// the keepers indoors, by the post the house gave them
+const POSTS = { bar: 'inn', counter: 'agnes', trough: 'pip', bench: 'tom', altar: 'priest' };
 const SCARED = ['Eek!', 'Put that away!', 'Help!', 'Not in the square!', 'Mind that blade!', 'Mother!', 'Run!'];
 const BUMPED = ['Oi!', 'Watch it!', 'Steady on!', 'Hey!'];
 const CHAT = [['Did you hear? An oni, out by the stones.', 'Never!', 'Big as a barn, they say.'], ['The well\'s low again.', 'It\'s been a dry month.'],
@@ -187,13 +200,13 @@ function lookFor(rnd, o = {}) {
   const L = {
     man, kid: !!o.kid, skin, skinDark: new THREE.Color(skin).multiplyScalar(0.82).getHex(), hair: o.grey ? 0x9a9a96 : pick(rnd, HAIR),
     top: o.top ?? pick(rnd, TUNIC), hose: pick(rnd, HOSE), boot: pick(rnd, BOOT), belt: 0x3a2a1c, bare: !!o.bare,
-    dress: man ? null : (o.dress ?? pick(rnd, DRESS)), apron: o.apron ?? (rnd() < 0.3 ? 0xe2dccc : null),
+    dress: o.robe ?? (man ? null : (o.dress ?? pick(rnd, DRESS))), apron: o.apron ?? (rnd() < 0.3 ? 0xe2dccc : null),
     hairStyle: o.hair ?? (man ? (rnd() < 0.2 ? 'bald' : 'short') : pick(rnd, ['long', 'bun', 'long'])),
     hat: o.hat ?? (man ? pick(rnd, ['none', 'cap', 'straw', 'hood', 'none']) : pick(rnd, ['none', 'kerchief', 'coif', 'hood', 'straw'])),
     hatColor: 0, beard: o.beard ?? (man && !o.kid && rnd() < 0.35), work: o.work,
   };
   // (a dress hangs over the knees when she sits: her legs are the dress's colour down to the boots)
-  if (!man) { L.top = new THREE.Color(L.dress).offsetHSL(0, -0.05, 0.08).getHex(); L.hose = L.dress; }
+  if (L.dress) { L.top = o.robe ? L.dress : new THREE.Color(L.dress).offsetHSL(0, -0.05, 0.08).getHex(); L.hose = L.dress; }
   L.sleeve = L.top; L.cuff = new THREE.Color(L.top).multiplyScalar(0.75).getHex();
   L.hatColor = L.hat === 'straw' ? 0xc8a868 : L.hat === 'coif' ? 0xf0ece2 : L.hat === 'kerchief' ? pick(rnd, [0xa83a2a, 0x3a5a8a, 0xd8c890, 0x6a8a4a]) : pick(rnd, [0x5a3a2a, 0x3a4a3a, 0x4a3a5a, 0x6a2a24, 0x2e3440]);
   return L;
@@ -207,19 +220,22 @@ export class Villagers {
     this.mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.86 });
     this.list = [];
     this.bubbles = document.getElementById('floats');
-    // the keepers at their stalls, the innkeeper at her door, the smith at his anvil
+    // the keepers at their stalls, the smith at his anvil, and those who keep their places indoors
     for (const st of V.stalls) this.spawn(KEEPERS[st.kind], { x: st.keeper.x, z: st.keeper.z, heading: st.keeper.heading });
-    const inn = V.houses.find((h) => h.name === 'inn'), ip = inn.at(inn.spec.door + 2.6, 0, inn.spec.d / 2 + 0.75);
-    this.spawn(KEEPERS.inn, { x: ip.x, z: ip.z, heading: inn.rot });
     const [sx, sz] = SMITHY.spot, [ax, az] = SMITHY.anvil;
     this.spawn(KEEPERS.smith, { x: sx, z: sz, heading: Math.atan2(ax - sx, az - sz) });
-    // and the people who wander, two of them children
-    for (let i = 0; i < 10; i++) {
-      const kid = i >= 8;
+    for (const h of V.houses) for (const sp of h.spots) if (sp.kind === 'keeper' && POSTS[sp.post]) { sp.by = 'keeper'; this.spawn(KEEPERS[POSTS[sp.post]], { x: sp.x, z: sp.z, heading: sp.heading }); }
+    // and the people who wander, two of them children: every one with a home, two to a house where there are beds
+    // enough, the children with the last of them
+    const homes = V.houses.filter((h) => h.kind === 'home');
+    this.homes = homes;
+    for (let i = 0; i < 18; i++) {
+      const kid = i >= 16;
       const look = lookFor(rnd, { kid, grey: !kid && rnd() < 0.15, hat: kid ? 'none' : undefined });
       const v = this.make(look, kid ? 0.62 : 0.9 + rnd() * 0.14);
-      v.role = kid ? 'kid' : 'wander'; v.home = V.doors[(rnd() * V.doors.length) | 0];
-      const s = V.spots[(i * 5) % V.spots.length];
+      v.role = kid ? 'kid' : 'wander';
+      v.home = kid ? homes[(i * 5) % homes.length] : homes[i % homes.length];
+      const s = V.spots.filter((p) => p.kind === 'stand' || p.kind === 'well')[(i * 7) % 20];
       v.pos.set(s.x + (rnd() - 0.5), 0, s.z + (rnd() - 0.5)); v.heading = rnd() * TAU;
       v.state = 'stop'; v.timer = 1 + rnd() * 6;
       this.list.push(v);
@@ -242,7 +258,7 @@ export class Villagers {
   }
   // someone who keeps a place
   spawn(K, at) {
-    const look = lookFor(this.rnd, { man: K.man, hat: K.hat, hair: K.hair, apron: K.apron, beard: K.beard, work: K.work, bare: K.bare, dress: K.dress });
+    const look = lookFor(this.rnd, { man: K.man, hat: K.hat, hair: K.hair, apron: K.apron, beard: K.beard, work: K.work, bare: K.bare, dress: K.dress, robe: K.robe, top: K.top, grey: K.grey });
     const v = this.make(look, K.man ? 1.02 : 0.95);
     v.role = 'keeper'; v.K = K; v.post = at; v.pos.set(at.x, 0, at.z); v.heading = at.heading; v.state = 'work'; v.talked = -99;
     this.list.push(v);
@@ -250,58 +266,79 @@ export class Villagers {
 
   // ---------------------------------------------------------------- choosing where to go
   choose(v, G) {
-    const V = this.V, r = Math.random(), night = G.sky.night;
+    const V = this.V, r = Math.random(), night = G.sky.night, R = Math.random;
     this.release(v);
     const free = (list) => list.filter((s) => !s.by);
+    const at = (house, kinds) => free(house.spots.filter((s) => kinds.includes(s.kind)));
+    const inn = V.houses.find((h) => h.kind === 'inn'), chapel = V.chapel;
+    const shops = V.houses.filter((h) => h.kind === 'goods' || h.kind === 'bakery' || h.kind === 'smithy');
     let goal = null;
     if (v.role === 'kid') {
-      // the children run from place to place, and now and then after the cat
-      goal = Math.random() < 0.3 ? { x: this.cat.pos.x, z: this.cat.pos.z, kind: 'cat' } : pick(Math.random, V.spots.filter((s) => s.kind === 'stand' || s.kind === 'well'));
-    } else if (r < (night ? 0.6 : 0.13)) goal = { ...(Math.random() < 0.6 ? v.home : pick(Math.random, V.doors)), kind: 'door' };
-    else if (r < 0.38) goal = pick(Math.random, free(V.spots.filter((s) => s.kind === 'stall' || s.kind === 'browse'))) || null;
-    else if (r < 0.52) goal = pick(Math.random, free(V.spots.filter((s) => s.kind === 'well'))) || null;
-    else if (r < 0.68) { const s = pick(Math.random, free(V.seats)); if (s) goal = { ...s, kind: 'seat', seat: s, x: s.node.x, z: s.node.z, node: s.node }; }
-    if (!goal) goal = pick(Math.random, V.spots.filter((s) => s.kind === 'stand'));
+      // the children run from place to place, and now and then after the cat; at night, to bed
+      if (night) goal = pick(R, at(v.home, ['bed'])) || pick(R, at(v.home, ['stand', 'seat']));
+      else goal = R() < 0.3 ? { x: this.cat.pos.x, z: this.cat.pos.z, kind: 'cat' } : R() < 0.15 ? pick(R, at(v.home, ['stand', 'seat'])) : this.near(v, V.spots.filter((s) => s.kind === 'stand' || s.kind === 'well'), 20);
+    } else if (night) {
+      if (r < 0.62) goal = pick(R, at(v.home, ['bed'])) || pick(R, at(v.home, ['seat', 'stand']));
+      else if (r < 0.85) goal = pick(R, at(inn, ['seat', 'browse', 'stand']));
+      else goal = this.near(v, free(V.spots.filter((s) => s.kind === 'stand' || s.kind === 'well')));
+    } else if (r < 0.18) goal = pick(R, at(v.home, ['seat', 'stand']));
+    else if (r < 0.28) goal = this.near(v, shops.flatMap((h) => at(h, ['browse'])));
+    else if (r < 0.34) goal = pick(R, at(inn, ['seat', 'browse']));
+    else if (r < 0.38) goal = pick(R, at(chapel, ['seat']));
+    else if (r < 0.54) goal = this.near(v, free(V.spots.filter((s) => s.kind === 'stall' || s.kind === 'browse')));
+    else if (r < 0.62) goal = this.near(v, free(V.spots.filter((s) => s.kind === 'well')));
+    else if (r < 0.75) goal = this.near(v, free(V.seats));
+    if (!goal) goal = this.near(v, V.spots.filter((s) => s.kind === 'stand'));
     this.go(v, goal);
   }
+  // one of `list`, the nearer the likelier
+  near(v, list, scale = 26) {
+    if (!list.length) return null;
+    let sum = 0;
+    const w = list.map((s) => { const k = Math.exp(-Math.hypot(s.x - v.pos.x, s.z - v.pos.z) / scale); sum += k; return k; });
+    let r = Math.random() * sum;
+    for (let i = 0; i < list.length; i++) { r -= w[i]; if (r <= 0) return list[i]; }
+    return list[list.length - 1];
+  }
+  // off to `goal`: a spot (outdoors or in), a seat or a bed, or just somewhere ({ x, z, kind })
   go(v, goal) {
-    const V = this.V, from = V.nearest(v.pos.x, v.pos.z), to = goal.node || V.nearest(goal.x, goal.z);
+    const V = this.V;
+    // a seat or a bed is walked to from beside it; the spot itself is kept for whoever has it
+    if ((goal.kind === 'seat' || goal.kind === 'bed') && !goal.place) goal = { place: goal, kind: goal.kind, x: goal.node.x, z: goal.node.z, node: goal.node, heading: goal.heading };
+    const from = V.nearest(v.pos.x, v.pos.z), to = goal.node || V.nearest(goal.x, goal.z);
     const route = from && to ? V.route(from, to) : null;
     v.goal = goal; v.path = (route || []).map((n) => ({ x: n.x, z: n.z }));
-    if (route && Math.hypot(route[0].x - v.pos.x, route[0].z - v.pos.z) < 1.2) v.path.shift();
+    if (route && v.path.length > 1 && Math.hypot(route[0].x - v.pos.x, route[0].z - v.pos.z) < 1.2) v.path.shift();
     v.path.push({ x: goal.x, z: goal.z });
     v.pi = 0; v.state = 'walk'; v.stuck = 0;
-    if (goal.seat) goal.seat.by = v; else if (V.spots.includes(goal)) goal.by = v;
+    (goal.place || goal).by = v;
   }
-  release(v) { if (v.goal && v.goal.by === v) v.goal.by = null; if (v.goal?.seat?.by === v) v.goal.seat.by = null; }
+  release(v) {
+    const g = v.goal; if (!g) return;
+    if (g.by === v) g.by = null;
+    if (g.place?.by === v) g.place.by = null;
+    if (v.mesh.rotation.x) { v.mesh.rotation.x = 0; }
+  }
 
   arrive(v, G) {
-    const g = v.goal;
+    const g = v.goal, p = g.place;
     v.vel.set(0, 0, 0);
-    if (g.kind === 'door') { this.inside(v, G, G.sky.night ? 50 + Math.random() * 80 : 12 + Math.random() * 30); return; }
-    if (g.kind === 'seat') { v.state = 'sit'; v.timer = 14 + Math.random() * 22; v.face = g.seat.heading; return; }
-    if (g.kind === 'stall' || g.kind === 'browse') { v.state = 'browse'; v.timer = 5 + Math.random() * 8; v.face = g.heading; return; }
-    v.state = 'stop'; v.timer = (v.role === 'kid' ? 1 : 4) + Math.random() * 7; v.face = g.kind === 'well' ? g.heading : null;
-  }
-  inside(v, G, secs) {
-    this.release(v);
-    v.state = 'inside'; v.timer = secs; v.mesh.visible = false; v.collider.x = 1e5; this.say(v, null);
-  }
-  emerge(v, G) {
-    const d = Math.random() < 0.5 ? v.home : pick(Math.random, this.V.doors);
-    v.pos.set(d.x, 0, d.z); v.heading = d.heading; v.mesh.visible = true; v.R.fill(0);
-    this.choose(v, G);
+    if (g.kind === 'seat') { v.state = 'sit'; v.timer = 20 + Math.random() * 30; v.face = p.heading; return; }
+    if (g.kind === 'bed') { v.state = 'sleep'; v.timer = G.sky.night ? 80 + Math.random() * 120 : 20 + Math.random() * 20; v.face = p.heading; return; }
+    if (g.kind === 'stall' || g.kind === 'browse') { v.state = 'browse'; v.timer = 8 + Math.random() * 12; v.face = g.heading; return; }
+    v.state = 'stop'; v.timer = (v.role === 'kid' ? 1.5 : 6) + Math.random() * 9; v.face = g.kind === 'well' || g.kind === 'stand' && (g.inside || g.pond) ? g.heading : null;
   }
 
   // ---------------------------------------------------------------- what the player does to them
   frighten(v, G, from) {
-    if (v.state === 'inside' || v.state === 'flee' || v.role === 'keeper') return;
+    if (v.state === 'flee' || v.role === 'keeper' || v.state === 'sleep') return;
     this.release(v);
-    // to a door away from the trouble, and not too far to run
-    const score = (d) => Math.hypot(d.x - from.x, d.z - from.z) - 0.8 * Math.hypot(d.x - v.pos.x, d.z - v.pos.z);
-    let best = this.V.doors[0];
-    for (const d of this.V.doors) if (score(d) > score(best)) best = d;
-    this.go(v, { ...best, kind: 'door' });
+    // into a house away from the trouble, and not too far to run: home if it is near, else any
+    const score = (h) => Math.hypot(h.door.x - from.x, h.door.z - from.z) - 0.8 * Math.hypot(h.door.x - v.pos.x, h.door.z - v.pos.z) + (h === v.home ? 6 : 0);
+    let best = v.home;
+    for (const h of this.V.houses) if (score(h) > score(best)) best = h;
+    const spots = best.spots.filter((s) => !s.by && (s.kind === 'stand' || s.kind === 'seat' || s.kind === 'browse'));
+    this.go(v, spots.length ? pick(Math.random, spots) : { x: best.inNode.x, z: best.inNode.z, node: best.inNode, kind: 'in' });
     v.state = 'flee';
     if (Math.random() < 0.7) this.say(v, pick(Math.random, SCARED), 2);
   }
@@ -320,18 +357,13 @@ export class Villagers {
     this.cat.update(dt, G, far);
     if (far) return;
     if (!this.welcomed && G.state === 'play' && Math.hypot(P.pos.x - 48, P.pos.z - 21) < 14) {
-      this.welcomed = true; G.hud?.hint('Stop by a stall, the smithy or the inn door, and its keeper will talk to you', 6);
+      this.welcomed = true; G.hud?.hint('Doors open as you walk up to them. Stop by a stall or a counter and its keeper will talk to you', 6);
     }
     const sword = P.weapon && SCARY.has(P.weapon.kind) && G.state === 'play';
     this.greetT = Math.max(0, this.greetT - dt); this.talkCool = Math.max(0, this.talkCool - dt);
     const pspeed = Math.hypot(P.vel.x, P.vel.z);
     for (const v of this.list) {
       if (v.role === 'keeper') { this.keeper(v, dt, G, P, pspeed, night); continue; }
-      if (v.state === 'inside') {
-        v.timer -= dt;
-        if (v.timer <= 0) { if (night && v.role !== 'kid' && Math.random() < 0.6) v.timer = 30 + Math.random() * 60; else if (night && v.role === 'kid') v.timer = 60; else this.emerge(v, G); }
-        continue;
-      }
       const dxp = P.pos.x - v.pos.x, dzp = P.pos.z - v.pos.z, dp = Math.hypot(dxp, dzp);
       // a sword swung close by, or barged into
       if (sword && dp < 6.5) this.frighten(v, G, P.pos);
@@ -344,11 +376,13 @@ export class Villagers {
         const want = wrapAngle(Math.atan2(dxp, dzp) - v.heading);
         v.lookYaw = damp(v.lookYaw, clamp(want, -1.2, 1.2), 5, dt);
         v.lookPitch = damp(v.lookPitch, clamp(-Math.atan2(P.pos.y + 1.3 - (groundY(v.pos.x, v.pos.z) + 1.6 * v.scale), dp) * 0.6, -0.4, 0.4), 5, dt);
-        if (dp < 3.2 && t - v.greeted > 40 && this.greetT <= 0 && v.state !== 'chat' && G.state === 'play') {
-          v.greeted = t; this.greetT = 3; this.say(v, pick(Math.random, night ? GREET_NIGHT : GREET), 2.6);
+        if (dp < 3.2 && t - v.greeted > 40 && this.greetT <= 0 && v.state !== 'chat' && v.state !== 'sleep' && G.state === 'play') {
+          const home = this.V.houseAt(v.pos.x, v.pos.z) === v.home && this.V.houseAt(P.pos.x, P.pos.z) === v.home;
+          v.greeted = t; this.greetT = 3; this.say(v, pick(Math.random, home ? GREET_IN : night ? GREET_NIGHT : GREET), 2.6);
           if (v.state === 'stop' && Math.abs(want) > 1) v.face = Math.atan2(dxp, dzp);
         }
       } else { v.lookYaw = damp(v.lookYaw, v.state === 'stop' ? 0.5 * Math.sin(t * 0.3 + v.seed) : 0, 2, dt); v.lookPitch = damp(v.lookPitch, 0, 2, dt); }
+      if (v.state === 'sleep') { v.lookYaw = 0; v.lookPitch = 0; if (dp < 6 && Math.random() < dt * 0.15 && !v.bubble) this.say(v, 'Zzz…', 2.5); }
       this.animate(v, dt, t);
       this.place(v, cam, dt);
     }
@@ -363,7 +397,7 @@ export class Villagers {
       if (v.chatT <= 0 && v.lines && v.lines.length) { this.say(v, v.lines.shift(), 2.6); v.chatT = 5.2; }
     }
     if (v.timer > 0) return;
-    if (v.state === 'sit' || v.state === 'browse' || v.state === 'stop' || v.state === 'chat') {
+    if (v.state === 'sit' || v.state === 'browse' || v.state === 'stop' || v.state === 'chat' || v.state === 'sleep') {
       // two standing close may stop for a word before going on
       if (v.state === 'stop' && v.role !== 'kid' && Math.random() < 0.55) {
         const u = this.list.find((o) => o !== v && o.role === 'wander' && o.state === 'stop' && o.pos.distanceTo(v.pos) < 3.5);
@@ -397,7 +431,7 @@ export class Villagers {
     }
     // step round each other, and round him
     for (const u of this.list) {
-      if (u === v || u.state === 'inside') continue;
+      if (u === v || !u.mesh.visible || u.state === 'sleep') continue;
       const ex = v.pos.x - u.pos.x, ez = v.pos.z - u.pos.z, e = Math.hypot(ex, ez), R = 0.75;
       if (e < R && e > 1e-4) { const k = (R - e) / R * (going ? 1.6 : 0.8); vx += ex / e * k; vz += ez / e * k; }
     }
@@ -408,14 +442,14 @@ export class Villagers {
     }
     v.vel.x = damp(v.vel.x, vx, 8, dt); v.vel.z = damp(v.vel.z, vz, 8, dt);
     v.pos.x += v.vel.x * dt; v.pos.z += v.vel.z * dt;
-    // never through a wall, a stall or the well (but they sit down on the benches)
-    if (v.state !== 'sit') for (const c of this.V.colliders) {
+    // never through a wall, a stall or the well (but they sit down on the benches and lie down on the beds)
+    if (v.state !== 'sit' && v.state !== 'sleep') for (const c of this.V.colliders) {
       const mx = v.pos.x - c.x, mz = v.pos.z - c.z, rr = c.r + 0.5;
       if (mx * mx + mz * mz > rr * rr) continue;
       const o = pushOut(c, v.pos.x, v.pos.z, 0.26);
       if (o) { v.pos.x += o.x; v.pos.z += o.z; }
     }
-    v.speed = Math.hypot(v.vel.x, v.vel.z);
+    v.speed = v.state === 'sleep' ? 0 : Math.hypot(v.vel.x, v.vel.z);
     // turn to where they are going, or to what they face
     if (v.speed > 0.25) v.heading = dampAngle(v.heading, Math.atan2(v.vel.x, v.vel.z), 7, dt);
     else if (v.face != null) v.heading = dampAngle(v.heading, v.face, 4, dt);
@@ -427,13 +461,14 @@ export class Villagers {
     this.settle(v, dt);
   }
   settle(v, dt) {
-    if (v.state === 'sit' && v.goal?.seat) { const s = v.goal.seat; v.pos.x = damp(v.pos.x, s.x, 6, dt); v.pos.z = damp(v.pos.z, s.z, 6, dt); }
+    const s = v.goal?.place;
+    if ((v.state === 'sit' || v.state === 'sleep') && s) { v.pos.x = damp(v.pos.x, s.x, 6, dt); v.pos.z = damp(v.pos.z, s.z, 6, dt); v.vel.set(0, 0, 0); }
     v.collider.x = v.pos.x; v.collider.z = v.pos.z;
   }
 
   // the keepers: at their places, working, turning to talk when he stops in front of them
   keeper(v, dt, G, P, pspeed, night) {
-    const K = v.K, closed = night && K.work !== 'wipe';
+    const K = v.K, closed = night && !K.night;
     if (closed !== !v.mesh.visible) v.mesh.visible = !closed;
     if (closed) { v.collider.x = 1e5; return; }
     const dx = P.pos.x - v.pos.x, dz = P.pos.z - v.pos.z, d = Math.hypot(dx, dz), t = G.time, Q = G.quests;
@@ -513,7 +548,11 @@ export class Villagers {
     } else if (st === 'sit') {
       for (const s of ['L', 'R']) { set('th' + s, -1.5, 0, s === 'L' ? 0.06 : -0.06); set('sh' + s, 1.45, 0, 0); set('ua' + s, -0.5, 0, 0); set('fa' + s, -0.75, 0, 0); }
       set('spine', -0.08, 0, 0);
-      T[HY] = (v.goal?.seat ? v.goal.seat.y - groundY(v.pos.x, v.pos.z) + 0.04 : 0.48) / v.scale - JOINT.hips[1];
+      T[HY] = (v.goal?.place ? v.goal.place.y - groundY(v.pos.x, v.pos.z) + 0.04 : 0.48) / v.scale - JOINT.hips[1];
+    } else if (st === 'sleep') {
+      // flat on the back, arms by the sides, breathing slow
+      set('chest', 0.03 * Math.sin(t * 1.1 + v.seed), 0, 0); set('uaL', 0, 0, 0.12); set('uaR', 0, 0, -0.12); set('faL', -0.2, 0, 0); set('faR', -0.2, 0, 0);
+      set('head', -0.15, 0.25 * Math.sin(v.seed), 0);
     } else if (st === 'work') {
       if (work === 'hammer') {
         const u = ((t + v.seed) % 1.25) / 1.25;
@@ -526,6 +565,10 @@ export class Villagers {
         set('uaL', -0.75, 0, 0.12); set('faL', -0.85, 0, 0);
         set('spine', 0.14 + (u > 0.55 && u < 0.7 ? 0.08 : 0), 0, 0); set('head', v.talking ? 0 : 0.3, 0, 0);
         set('thL', -0.2, 0, 0.05); set('shL', 0.25, 0, 0); set('thR', 0.15, 0, -0.04);
+      } else if (work === 'pray') {
+        // hands together before him, head bowed, a slow nod now and then
+        set('uaL', -0.55, 0, -0.32); set('uaR', -0.55, 0, 0.32); set('faL', -1.35, 0.35, 0); set('faR', -1.35, -0.35, 0);
+        set('head', v.talking ? 0.05 : 0.32 + 0.05 * Math.sin(t * 0.4 + v.seed), 0, 0);
       } else if (work === 'wipe') {
         const c = Math.cos(t * 3.2 + v.seed), s = Math.sin(t * 3.2 + v.seed);
         set('uaL', -0.55, 0, 0.18); set('faL', -1.25, 0, 0);
@@ -555,6 +598,15 @@ export class Villagers {
     const y = groundY(v.pos.x, v.pos.z);
     v.mesh.position.set(v.pos.x, y, v.pos.z);
     v.mesh.rotation.y = v.heading;
+    // asleep: laid along the bed, the head to its head (the bed's heading points to its foot), the feet at its foot
+    const lie = v.state === 'sleep' && v.goal?.place;
+    if (lie) {
+      const b = v.goal.place, h = b.heading, L = 0.86 * v.scale * 1.78;
+      v.mesh.rotation.order = 'YXZ'; v.mesh.rotation.set(-PI / 2, h, 0);
+      v.lieK = Math.min(1, (v.lieK || 0) + dt * 2);
+      v.mesh.position.set(b.x + Math.sin(h) * L / 2, b.y + 0.13 * v.scale, b.z + Math.cos(h) * L / 2);
+      v.heading = h;
+    } else if (v.mesh.rotation.x) { v.mesh.rotation.x = 0; v.lieK = 0; }
     // the speech bubble over the head
     if (v.bubble) {
       v.bubbleT -= dt;

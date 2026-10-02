@@ -26,15 +26,22 @@ export const PATHS = [
 
 export const SPAWN = { x: -24, z: 10.5 };
 
-// the village of Brackenford, on the level ground south of the road east of the crossroads: inside [x0, x1] by
-// [z0, z1] it is built on (no trees, no rocks), and the land round it is levelled to a gentle plane that leans
-// down to the south-west, as the land there does anyway
-export const VILLAGE = { x: 48, z: 21, x0: 25, x1: 72, z0: 1, z1: 41 };
-export const inVillage = (x, z, pad = 0) => x > VILLAGE.x0 - pad && x < VILLAGE.x1 + pad && z > VILLAGE.z0 - pad && z < VILLAGE.z1 + pad;
+// the village of Brackenford, on the level ground south of the road east of the crossroads: it is built over a few
+// overlapping rectangles ([x0, x1, z0, z1]: the old square, the row along the east road and the east street, and the
+// lane going south), where no trees or rocks are left standing but the old tree on the green; the land under it is
+// levelled to a gentle plane that leans down to the south-west, as the land there does anyway
+export const VILLAGE = { x: 48, z: 21, rects: [[25, 72, 1, 41], [64, 103, -6, 42], [36, 80, 38, 60]] };
+const KEEP = [[90, 20, 3]];
+export const inVillage = (x, z, pad = 0) => VILLAGE.rects.some(([a, b, c, d]) => x > a - pad && x < b + pad && z > c - pad && z < d + pad);
+export const cleared = (x, z) => inVillage(x, z, 1) && !KEEP.some(([kx, kz, r]) => Math.hypot(x - kx, z - kz) < r);
 const villageY = (x, z) => 0.2 + (x - VILLAGE.x) * 0.006 - (z - VILLAGE.z) * 0.012;
 function villageK(x, z) {
-  const dx = Math.max(0, Math.abs(x - VILLAGE.x) - 23), dz = Math.max(0, Math.abs(z - VILLAGE.z) - 20);
-  return 1 - smoothstep(0, 9, Math.hypot(dx, dz));
+  let k = 0;
+  for (const [a, b, c, d] of VILLAGE.rects) {
+    const dx = Math.max(0, a + 2 - x, x - b + 2), dz = Math.max(0, c + 2 - z, z - d + 2);
+    k = Math.max(k, 1 - smoothstep(0, 9, Math.hypot(dx, dz)));
+  }
+  return k;
 }
 
 function ellipseE(z, x, zz) {

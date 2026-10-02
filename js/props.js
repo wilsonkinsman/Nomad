@@ -3,7 +3,7 @@
 // that flutters in the wind (real cloth).
 import * as THREE from 'three';
 import { mergeGeometries } from '../lib/utils/BufferGeometryUtils.js';
-import { groundY, surfaceAt, PATHS, SPAWN, inVillage } from './world.js';
+import { groundY, surfaceAt, PATHS, SPAWN, cleared } from './world.js';
 import { Cloth } from './cloth.js';
 import { mulberry32, vnoise, GLSL_NOISE } from './util.js';
 
@@ -75,7 +75,7 @@ export class Props {
         m4.compose(new THREE.Vector3(sp.x, groundY(sp.x, sp.z) - sp.r * 0.12, sp.z), q, new THREE.Vector3(sp.r, sp.r, sp.r * (0.8 + rnd() * 0.4)));
         // (a rock where the village now stands has been cleared away: it is still drawn from the dice, so the
         // rest fall where they did, but at no size)
-        const gone = inVillage(sp.x, sp.z, 1);
+        const gone = cleared(sp.x, sp.z);
         if (gone) m4.makeScale(0, 0, 0);
         im.setMatrixAt(i, m4);
         im.setColorAt(i, c.setRGB(Math.min(1, sp.moss), sp.snow > 0.3 ? 1 : 0, 0));

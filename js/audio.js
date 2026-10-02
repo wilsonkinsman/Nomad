@@ -94,6 +94,26 @@ export class Audio {
     this.grain(t, 3000, 1, 0.04, 0.16 * k); this.thump(t, 240, 0.05, 0.12 * k);
     this.ping(t, 1650 + Math.random() * 40, 0.8, 0.06 * k); this.ping(t, 2490, 0.55, 0.035 * k); this.ping(t, 3920, 0.35, 0.02 * k);
   }
+  // a door swinging open on old hinges
+  door() {
+    if (!this.ctx) return;
+    const ctx = this.ctx, t = ctx.currentTime + 0.01, o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(140, t); o.frequency.linearRampToValueAtTime(230 + Math.random() * 60, t + 0.35); o.frequency.linearRampToValueAtTime(170, t + 0.6);
+    f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = 6;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.025, t + 0.08); g.gain.linearRampToValueAtTime(0.018, t + 0.45); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.7);
+    o.connect(f).connect(g).connect(this.master); o.start(t); o.stop(t + 0.75);
+    this.thump(t + 0.02, 120, 0.06, 0.05);
+  }
+  // the chapel bell: three slow strokes, k loud
+  bell(k = 1) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + 0.05;
+    for (let i = 0; i < 3; i++) {
+      const s = t + i * 2.2;
+      this.ping(s, 392, 4.5, 0.09 * k); this.ping(s, 784 * 1.002, 3.2, 0.05 * k); this.ping(s, 940, 2.4, 0.035 * k); this.ping(s, 1176, 1.8, 0.03 * k); this.ping(s, 196, 5, 0.05 * k);
+      this.thump(s, 300, 0.05, 0.05 * k);
+    }
+  }
   // the cat, put out
   meow() {
     if (!this.ctx) return;

@@ -21,6 +21,8 @@ export class CameraRig {
     this._pos = new THREE.Vector3();
     this._look = new THREE.Vector3();
     this.blockers = [];       // boxes the lens may not pass behind
+    this.ceiling = null;      // (x, z) => how high the ceiling is over him indoors, or null outdoors
+    this.indoor = 0;
     this.reach = 1;           // how much of the arm is clear of them (eases back out, snaps in)
   }
 
@@ -47,7 +49,10 @@ export class CameraRig {
     const far = player.aimPull || 0;          // a Thunder Arrow being charged: the camera pulls far back
     // the Wind Crow: the arm lengthens to take in the bird, and more the faster it goes
     const fly = player.fly || 0, spd = Math.hypot(player.vel.x, player.vel.y, player.vel.z);
-    const arm = (this.dist + this.pull) * Math.sqrt(hs1) * (1 - 0.35 * zoom) * (1 + 1.9 * far) * (1 + fly * (0.3 + 0.012 * spd));
+    // indoors the arm is shorter and the lens stays under the ceiling
+    const roof = this.ceiling ? this.ceiling(player.pos.x, player.pos.z) : null;
+    this.indoor = damp(this.indoor, roof != null ? 1 : 0, 4, dt);
+    const arm = (1 - 0.3 * this.indoor) * (this.dist + this.pull) * Math.sqrt(hs1) * (1 - 0.35 * zoom) * (1 + 1.9 * far) * (1 + fly * (0.3 + 0.012 * spd));
 
     // focus trails the body a little: feels like a heavy camera operator
     const target = new THREE.Vector3(player.pos.x, player.visualY + eye + 0.6 * fly * hs1, player.pos.z);     // carried: between him and the bird
@@ -88,6 +93,7 @@ export class CameraRig {
       const y = THREE.MathUtils.lerp(this._look.y, this._pos.y, t);
       if (y < minY) this._pos.y += (minY - y) / t;
     }
+    if (roof != null && this._pos.y > roof - 0.3) this._pos.y = roof - 0.3;
     // and in front of any wall between him and the lens
     let reach = 1;
     const L = this._look, Q = this._pos, len = Math.hypot(Q.x - L.x, Q.z - L.z) + 1e-6;

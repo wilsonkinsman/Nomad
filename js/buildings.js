@@ -11,7 +11,11 @@ import { groundY } from './world.js';
 import { mulberry32 } from './util.js';
 import { boxCollider } from './collide.js';
 
-const BUCKETS = ['stone', 'plaster', 'timber', 'roof', 'ridge', 'wood', 'door', 'window', 'windowDark', 'shutter', 'iron', 'flowers', 'cloth', 'dark', 'water', 'glow', 'coal', 'clay'];
+const BUCKETS = ['stone', 'plaster', 'timber', 'roof', 'ridge', 'wood', 'door', 'window', 'windowDark', 'windowIn', 'shutter', 'iron', 'flowers', 'cloth', 'dark', 'water', 'glow', 'coal', 'clay', 'flame', 'stained', 'flags'];
+// a house you can go into: its ground-floor walls are WALL thick and lined with plaster; the doorway is an arch,
+// DOORWAY.r either side of the middle, springing at DOORWAY.hs (so it is hs + r high in the middle)
+export const WALL = 0.3, LINING = 0.05;
+export const DOORWAY = { r: 0.64, hs: 1.6, leaf: 0.62 };
 const SHUTTERS = [0x4d6f8a, 0x6a7d4a, 0x8a3e30, 0x5a4a3a, 0x3e5a6a];
 const FLOWERS = [0x9a5ac8, 0xc84a6a, 0xe8d050, 0xf2f0e8, 0xd86a3a];
 
@@ -75,21 +79,23 @@ export class Builder {
   //   floors (1 or 2), upper ('stone' | 'timber'), pitch, door (offset along the front), seed, dormers, chimneys
   //   ([[x, z] in its own frame]), balcony, flowers, windows ('few' | 'many') }
   house(spec) {
-    const S = Object.assign({ floors: 2, upper: 'stone', pitch: 0.82, floorH: 2.9, door: 0, seed: 1, dormers: 0, chimneys: [], balcony: false, rot: 0, overhang: 0.45 }, spec);
+    const S = Object.assign({ floors: 2, upper: 'stone', pitch: 0.82, floorH: 2.9, door: 0, seed: 1, dormers: 0, chimneys: [], balcony: false, rot: 0, overhang: 0.45, open: true }, spec);
     const rnd = mulberry32(S.seed * 7919), { w, d, floorH: fh, pitch: p } = S;
     // the floor is at the highest ground under it; the walls go down past the lowest
     let lo = Infinity, hi = -Infinity;
     const c = Math.cos(S.rot), s = Math.sin(S.rot);
     const world = (lx, lz) => [S.x + lx * c + lz * s, S.z - lx * s + lz * c];
     for (let i = -1; i <= 1; i += 0.5) for (let j = -1; j <= 1; j += 0.5) { const [x, z] = world(i * w / 2, j * d / 2); const y = groundY(x, z); lo = Math.min(lo, y); hi = Math.max(hi, y); }
-    const fl = hi + 0.08;
+    // (a house that can be gone into stands on ground levelled for it, and its floor is the ground)
+    const fl = S.open ? hi : hi + 0.08;
     this.ground = lo; this.M.makeRotationY(S.rot).setPosition(S.x, fl, S.z);
     const shutter = SHUTTERS[(rnd() * SHUTTERS.length) | 0], down = fl - lo + 0.9, tint = S.tint ?? 0xffffff;
     const timber = S.floors > 1 && S.upper === 'timber', jetty = timber ? 0.2 : 0;
     const E = S.floors * fh, hd = d / 2 + jetty, R = E + hd * Math.tan(p);
     // ground floor, on its footing
     this.add('stone', box(w + 0.16, 0.5, d + 0.16, 0, -down + 0.25 + (down - 0.5) / 2 - 0.25, 0), 2.5, 0xc8c0b0);
-    this.add('stone', box(w, fh + down, d, 0, (fh - down) / 2, 0), 2.5, tint);
+    if (S.open) this.shell(S, w, d, fh, down, tint, S.floors > 1 ? fh - 0.02 : null);
+    else this.add('stone', box(w, fh + down, d, 0, (fh - down) / 2, 0), 2.5, tint);
     // the upper floor
     if (S.floors > 1) {
       if (timber) this.timbered(w, d + jetty * 2, fh, fh, rnd);
@@ -122,20 +128,22 @@ export class Builder {
       this.add('wood', g, 1, 0x3a2a1c);
     }
     // the door, its stone arch, a step
-    this.door(S.door, d / 2);
-    // windows on every side, upstairs and down, never over the door
-    const info = { windows: 0 };
+    this.door(S.door, d / 2, S.open);
+    // windows on every side, upstairs and down, never over the door, nor downstairs on the wall with the hearth
+    // (the end wall farther from the door); downstairs each has its inside too
+    const hearth = S.open ? (S.door <= 0 ? 1 : 3) : -1, low = [];
     for (let f = 0; f < S.floors; f++) {
       const y = f * fh + 1.05 + (f ? 0.15 : 0), jet = f && timber ? jetty : 0;
       for (const [face, len] of [[0, w], [1, d], [2, w], [3, d]]) {
-        const n = Math.max(1, Math.floor((len - 1) / 2.3));
+        // (fewer downstairs in a house that can be gone into, to leave its walls for furniture)
+        const n = f === 0 && S.open ? Math.max(1, Math.floor((len - 1.5) / 3.2)) : Math.max(1, Math.floor((len - 1) / 2.3));
         for (let k = 0; k < n; k++) {
           const u = (k + 0.5) / n * len - len / 2;
           if (f === 0 && face === 0 && Math.abs(u - S.door) < 1.3) continue;
+          if (f === 0 && face === hearth) continue;
           if (face % 2 === 1 && f === 0 && rnd() < 0.4) continue;
-          if (S.balcony && f === 1 && face === 0) { /* the gallery's door */ }
           this.window(face, u, y, face % 2 ? w / 2 : d / 2 + jet, shutter, f === 0 && !timber, rnd, (S.flowers ?? 0.35));
-          info.windows++;
+          if (f === 0 && S.open) { this.inPane(face, u, y, (face % 2 ? w / 2 : d / 2) - WALL - LINING); low.push({ face, u }); }
         }
       }
     }
@@ -150,13 +158,76 @@ export class Builder {
       const [x, z] = world(cx, cz); smoke.push(new THREE.Vector3(x, fl + top + 0.2, z));
     }
     if (S.balcony) this.gallery(w, d, fh, rnd);
-    const [dx, dz] = world(S.door, d / 2 + 0.9);
+    const [dx, dz] = world(S.door, d / 2 + 0.9), top = R + t;
+    // what stands in the way: the walls (round the doorway) of a house that can be gone into, else the whole of it
+    const wc = (lx, lz, a, b) => { const [x, z] = world(lx, lz); return boxCollider(x, z, a, b, S.rot, top); };
+    const dl = S.door - DOORWAY.r, dr = S.door + DOORWAY.r, T = WALL;
+    const walls = S.open ? [wc(0, -d / 2 + T / 2, w / 2, T / 2), wc(-w / 2 + T / 2, 0, T / 2, d / 2), wc(w / 2 - T / 2, 0, T / 2, d / 2),
+      wc((dl - w / 2) / 2, d / 2 - T / 2, (dl + w / 2) / 2, T / 2), wc((dr + w / 2) / 2, d / 2 - T / 2, (w / 2 - dr) / 2, T / 2)]
+      : [boxCollider(S.x, S.z, w / 2 + 0.05, d / 2 + jetty + 0.05, S.rot, top)];
     return {
-      collider: boxCollider(S.x, S.z, w / 2 + 0.05, d / 2 + jetty + 0.05, S.rot, R + t),
-      door: { x: dx, z: dz, heading: S.rot }, smoke, floor: fl, ridge: fl + R + t, front: world(0, d / 2), rot: S.rot,
+      walls, open: S.open, hearth, windows: low, w, d, fh,
+      interior: { hw: w / 2 - T - LINING, hd: d / 2 - T - LINING, ceil: S.floors > 1 ? fh - 0.05 : E + (R - E) * 0.5 },
+      doorway: { u: S.door, z: d / 2 - T / 2 },
+      door: { x: dx, z: dz, heading: S.rot }, smoke, floor: fl, ridge: fl + top, front: world(0, d / 2), rot: S.rot, x: S.x, z: S.z,
       sign: (u, h) => { const [x, z] = world(u, d / 2 + 0.05); return new THREE.Vector3(x, fl + h, z); },
       at: (lx, ly, lz) => { const [x, z] = world(lx, lz); return new THREE.Vector3(x, fl + ly, z); },
     };
+  }
+
+  // the ground floor of a house that can be gone into: stone walls round an arched doorway, lined inside with
+  // plaster, a floor of boards, and a ceiling of boards on beams (`ceil`, if there is a floor above), or tie beams
+  // across under the open roof
+  shell(S, w, d, fh, down, tint, ceil) {
+    const T = WALL, Ln = LINING, y0 = -down, H = fh - y0, cy = (y0 + fh) / 2, zf = d / 2 - T / 2, u = S.door, R = DOORWAY.r, hs = DOORWAY.hs;
+    const dl = u - R, dr = u + R, P = 0xf2eadb;
+    this.add('stone', box(w, H, T, 0, cy, -d / 2 + T / 2), 2.5, tint);
+    for (const sx of [-1, 1]) this.add('stone', box(T, H, d - 2 * T, sx * (w / 2 - T / 2), cy, 0), 2.5, tint);
+    this.add('stone', box(dl + w / 2, H, T, (dl - w / 2) / 2, cy, zf), 2.5, tint);
+    this.add('stone', box(w / 2 - dr, H, T, (dr + w / 2) / 2, cy, zf), 2.5, tint);
+    // over the doorway: a piece of wall with the arch cut out of it
+    const arch = (depth) => {
+      const sh = new THREE.Shape();
+      sh.moveTo(-R, hs); sh.lineTo(-R, fh); sh.lineTo(R, fh); sh.lineTo(R, hs); sh.absarc(0, hs, R, 0, Math.PI, false);
+      return new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false, curveSegments: 10 });
+    };
+    this.add('stone', arch(T).translate(u, 0, d / 2 - T), 2.5, tint);
+    // the lining
+    const zi = d / 2 - T - Ln / 2, xi = w / 2 - T - Ln / 2, iw = w - 2 * T, id = d - 2 * T;
+    this.add('plaster', box(iw, fh, Ln, 0, fh / 2, -zi), 2, P);
+    for (const sx of [-1, 1]) this.add('plaster', box(Ln, fh, id - 2 * Ln, sx * xi, fh / 2, 0), 2, P);
+    this.add('plaster', box(dl + w / 2 - T, fh, Ln, (dl - w / 2 + T) / 2, fh / 2, zi), 2, P);
+    this.add('plaster', box(w / 2 - T - dr, fh, Ln, (dr + w / 2 - T) / 2, fh / 2, zi), 2, P);
+    this.add('plaster', arch(Ln).translate(u, 0, d / 2 - T - Ln), 2, P);
+    // a skirting of dark boards, the floor of planks
+    for (const sz of [-1, 1]) this.add('wood', box(iw - 0.1, 0.14, 0.03, 0, 0.07, sz * (zi - Ln / 2 - 0.015)), 1, 0x3a2a1c);
+    for (const sx of [-1, 1]) this.add('wood', box(0.03, 0.14, id - 0.1, sx * (xi - Ln / 2 - 0.015), 0.07, 0), 1, 0x3a2a1c);
+    this.add('wood', box(iw, 0.06, id, 0, -0.01, 0), 1.6, 0x9a7a58);
+    // overhead
+    const nb = Math.max(2, Math.round(iw / 1.5));
+    if (ceil != null) {
+      this.add('wood', box(iw, 0.04, id, 0, ceil + 0.02, 0), 1.6, 0x7a5a3c);
+      for (let k = 1; k < nb; k++) this.add('timber', box(0.16, 0.2, id, -iw / 2 + iw * k / nb, ceil - 0.1, 0), 1, 0x3a2a1c);
+    } else {
+      for (let k = 1; k < nb; k++) this.add('timber', box(0.18, 0.22, d, -iw / 2 + iw * k / nb, fh - 0.11, 0), 1, 0x3a2a1c);
+    }
+  }
+
+  // the inside of a downstairs window: daylight through the glass (its own material), a deep sill and a frame;
+  // `out` is how far the inside of the wall is from the middle
+  inPane(face, u, y, out) {
+    const ww = 0.78, wh = 1.05, place = (g) => {
+      // as window() places on `face`, but facing in
+      if (face === 0) g.rotateY(Math.PI).translate(u, y, out);
+      else if (face === 2) g.translate(-u, y, -out);
+      else if (face === 1) g.rotateY(-Math.PI / 2).translate(out, y, -u);
+      else g.rotateY(Math.PI / 2).translate(-out, y, u);
+      return g;
+    };
+    this.add('windowIn', place(new THREE.PlaneGeometry(ww, wh).translate(0, wh / 2, 0.01)), 0);
+    this.add('wood', place(box(ww + 0.2, 0.06, 0.24, 0, -0.03, 0.1)), 1, 0x5a4430);
+    this.add('wood', place(box(ww + 0.12, 0.07, 0.05, 0, wh + 0.03, 0.02)), 1, 0x4a3524);
+    for (const sx of [-1, 1]) this.add('wood', place(box(0.06, wh, 0.05, sx * (ww / 2 + 0.03), wh / 2, 0.02)), 1, 0x4a3524);
   }
 
   // an upper storey of lime plaster in a frame of dark oak: posts, rails and braces (w by d, from y0, h tall)
@@ -178,13 +249,14 @@ export class Builder {
     }
   }
 
-  // an arched plank door in the front wall at u, with a stone arch and jambs, and a step
-  door(u, z) {
+  // an arched plank door in the front wall at u, with a stone arch and jambs, and a step (in a house that can be
+  // gone into the door itself is hung by the village, to open)
+  door(u, z, open = false) {
     const r = 0.62, hs = 1.6, sh = new THREE.Shape();
     sh.moveTo(-r, 0); sh.lineTo(r, 0); sh.lineTo(r, hs); sh.absarc(0, hs, r, 0, Math.PI, false); sh.lineTo(-r, 0);
     const g = new THREE.ShapeGeometry(sh, 12), uv = g.attributes.uv;
     for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) + r) / (2 * r), uv.getY(i) / (hs + r));
-    this.add('door', g.translate(u, 0, z + 0.02), 0);
+    if (!open) this.add('door', g.translate(u, 0, z + 0.02), 0);
     for (let k = 0; k <= 8; k++) {
       const a = k / 8 * Math.PI, vx = u + Math.cos(a) * (r + 0.12), vy = hs + Math.sin(a) * (r + 0.12);
       this.add('stone', box(0.3, 0.22, 0.12).rotateZ(a - Math.PI / 2).translate(vx, vy, z + 0.05), 1.2, 0xe8e2d4);
@@ -271,10 +343,114 @@ export class Builder {
     return { collider: boxCollider(x, z, size / 2 + 0.05, size / 2 + 0.05, 0, height + size * 1.35) };
   }
 
+  // ---------------------------------------------------------------- the chapel
+  // a stone nave you go into at its gable end: spec { x, z, rot (the way its door faces), W (wide), L (long), H (how
+  // high its walls are) }. Tall pointed windows of stained glass down both sides, a round one over the door, a little
+  // bellcote with its bell on the front gable, a steep tiled roof open to the rafters inside, and a floor of flags.
+  chapel(spec) {
+    const S = Object.assign({ W: 7, L: 12.5, H: 4.6, pitch: 0.95, rot: 0, seed: 11 }, spec);
+    const { W, L, H: wh, pitch: p } = S, c = Math.cos(S.rot), s = Math.sin(S.rot);
+    const world = (lx, lz) => [S.x + lx * c + lz * s, S.z - lx * s + lz * c];
+    let lo = Infinity, hi = -Infinity;
+    for (let i = -1; i <= 1; i += 0.5) for (let j = -1; j <= 1; j += 0.5) { const [x, z] = world(i * W / 2, j * L / 2); const y = groundY(x, z); lo = Math.min(lo, y); hi = Math.max(hi, y); }
+    const fl = hi; this.ground = lo; this.M.makeRotationY(S.rot).setPosition(S.x, fl, S.z);
+    const T = WALL, Ln = LINING, down = fl - lo + 0.9, y0 = -down, Hh = wh - y0, cy = (y0 + wh) / 2, R = DOORWAY.r, hs = DOORWAY.hs;
+    const tint = 0xf6f0e4, P = 0xf2eadb, rise = W / 2 * Math.tan(p), top = wh + rise, t = 0.12;
+    this.add('stone', box(W + 0.2, 0.6, L + 0.2, 0, y0 + 0.3, 0), 2.5, 0xc8c0b0);
+    for (const sx of [-1, 1]) this.add('stone', box(T, Hh, L, sx * (W / 2 - T / 2), cy, 0), 2.5, tint);
+    this.add('stone', box(W - 2 * T, Hh, T, 0, cy, -L / 2 + T / 2), 2.5, tint);
+    const side = W / 2 - T - R;
+    for (const sx of [-1, 1]) this.add('stone', box(side, Hh, T, sx * (R + side / 2), cy, L / 2 - T / 2), 2.5, tint);
+    const arch = (depth, h) => {
+      const sh = new THREE.Shape();
+      sh.moveTo(-R, hs); sh.lineTo(-R, h); sh.lineTo(R, h); sh.lineTo(R, hs); sh.absarc(0, hs, R, 0, Math.PI, false);
+      return new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false, curveSegments: 10 });
+    };
+    this.add('stone', arch(T, wh).translate(0, 0, L / 2 - T), 2.5, tint);
+    // buttresses down the sides
+    for (const sx of [-1, 1]) for (const k of [-1, 0, 1]) this.add('stone', box(0.5, wh * 0.8, 0.45, sx * (W / 2 + 0.2), wh * 0.4 - 0.2, k * L / 3.2).translate(0, 0, 0), 2.5, 0xe8e0d0);
+    // the gables, open inside to the roof
+    const tri = new THREE.Shape([new THREE.Vector2(-W / 2, 0), new THREE.Vector2(W / 2, 0), new THREE.Vector2(0, rise)]);
+    this.add('stone', new THREE.ExtrudeGeometry(tri, { depth: T, bevelEnabled: false }).translate(0, wh, L / 2 - T), 2.5, tint);
+    this.add('stone', new THREE.ExtrudeGeometry(tri, { depth: T, bevelEnabled: false }).translate(0, wh, -L / 2), 2.5, tint);
+    // inside: plaster, a floor of flags, tie beams across under the rafters
+    const xi = W / 2 - T - Ln / 2, zi = L / 2 - T - Ln / 2, iw = W - 2 * T, id = L - 2 * T;
+    for (const sx of [-1, 1]) this.add('plaster', box(Ln, wh, id, sx * xi, wh / 2, 0), 2, P);
+    this.add('plaster', box(iw, wh, Ln, 0, wh / 2, -zi), 2, P);
+    for (const sx of [-1, 1]) this.add('plaster', box(side - Ln, wh, Ln, sx * (R + (side - Ln) / 2), wh / 2, zi), 2, P);
+    this.add('plaster', arch(Ln, wh).translate(0, 0, L / 2 - T - Ln), 2, P);
+    this.add('stone', box(iw, 0.06, id, 0, -0.01, 0), 1.3, 0x9a948a);
+    for (let k = -2; k <= 2; k++) this.add('timber', box(iw, 0.24, 0.2, 0, wh - 0.12, k * id / 5.2), 1, 0x3a2a1c);
+    // the roof, its ridge running front to back
+    const oh = 0.5, ohg = 0.4, Ls = (W / 2 + oh) / Math.cos(p), RW = L + ohg * 2;
+    for (const flip of [false, true]) {
+      this.add('roof', this.slope(RW, Ls, p, 0, top + t, 0, flip).rotateY(Math.PI / 2), 0);
+      this.add('wood', this.slope(RW, Ls, p, 0, top, 0, flip, 2, true).rotateY(Math.PI / 2), 0, 0x4a3a2c);
+      const ex = (flip ? -1 : 1) * (W / 2 + oh), ey = top + t - (W / 2 + oh) * Math.tan(p);
+      this.add('wood', box(0.08, 0.2, RW, ex, ey - 0.06, 0), 1, 0x3a2a1c);
+    }
+    this.add('ridge', new THREE.CylinderGeometry(0.15, 0.15, RW + 0.1, 10, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateX(-Math.PI / 2).rotateY(Math.PI / 2).translate(0, top + t + 0.02, 0), 0);
+    for (const sz of [-1, 1]) for (const flip of [false, true]) {
+      const g = box(0.08, 0.22, Ls, 0, 0, 0).translate(0, 0, Ls / 2).rotateX(p).translate(sz * (L / 2 + ohg), top + t - 0.05, 0);
+      if (flip) g.rotateY(Math.PI);
+      this.add('wood', g.rotateY(Math.PI / 2), 1, 0x3a2a1c);
+    }
+    // the bellcote over the door, and its bell
+    const bz = L / 2 - T / 2;
+    this.add('stone', box(1.1, 1.7, 0.55, 0, top + 0.55, bz), 1.6, 0xeee6d6);
+    this.add('dark', box(0.62, 0.8, 0.58, 0, top + 0.75, bz), 1, 0x2a2420);
+    for (const flip of [false, true]) this.add('roof', this.slope(0.9, 0.85, 0.8, 0, top + 2.0, 0, flip).rotateY(Math.PI / 2).translate(0, 0, bz), 0);
+    const bell = new THREE.LatheGeometry([[0, 0.42], [0.08, 0.42], [0.12, 0.36], [0.14, 0.18], [0.22, 0.04], [0.24, 0], [0.2, 0.0]].map(([r, h]) => new THREE.Vector2(r, h)), 14);
+    this.add('iron', bell.translate(0, top + 0.42, bz + 0.05), 0, 0x9a7a3a);
+    // stained glass: three tall pointed windows down each side, a round one over the door
+    const lancet = () => {
+      const sh = new THREE.Shape();
+      sh.moveTo(-0.36, 0); sh.lineTo(0.36, 0); sh.lineTo(0.36, 1.7); sh.quadraticCurveTo(0.36, 2.2, 0, 2.45); sh.quadraticCurveTo(-0.36, 2.2, -0.36, 1.7); sh.lineTo(-0.36, 0);
+      const g = new THREE.ShapeGeometry(sh, 8), uv = g.attributes.uv, q = g.attributes.position;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, (q.getX(i) + 0.36) / 0.72, q.getY(i) / 2.45);
+      return g;
+    };
+    for (const sx of [-1, 1]) for (const k of [-1, 0, 1]) {
+      const z = k * L / 3.2 + L / 6.4, y = 1.5;
+      this.add('stained', lancet().rotateY(sx * Math.PI / 2).translate(sx * (W / 2 + 0.012), y, z), 0);
+      this.add('stained', lancet().rotateY(-sx * Math.PI / 2).translate(sx * (W / 2 - T - Ln - 0.012), y, z), 0);
+      this.add('stone', box(0.1, 2.7, 0.95, sx * (W / 2 + 0.03), y + 1.22, z), 1.2, 0xe2dccc);
+    }
+    const rose = () => { const g = new THREE.CircleGeometry(0.62, 20), uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i), uv.getY(i)); return g; };
+    this.add('stained', rose().translate(0, wh + rise * 0.32, L / 2 + 0.012), 0);
+    this.add('stained', rose().rotateY(Math.PI).translate(0, wh + rise * 0.32, L / 2 - T - 0.012), 0);
+    this.add('stone', new THREE.TorusGeometry(0.66, 0.08, 6, 24).translate(0, wh + rise * 0.32, L / 2 + 0.02), 1.2, 0xe2dccc);
+    // the door's arch, and steps up to it
+    this.door(0, L / 2, true);
+    this.add('stone', box(2.6, 0.12, 1.1, 0, -0.06, L / 2 + 0.85), 1.2, 0xbab2a2);
+    const [dx, dz] = world(0, L / 2 + 1.4), [bx, bzz] = world(0, bz);
+    const wc = (lx, lz, a, b) => { const [x, z] = world(lx, lz); return boxCollider(x, z, a, b, S.rot, top + t); };
+    const walls = [wc(-W / 2 + T / 2, 0, T / 2 + 0.25, L / 2), wc(W / 2 - T / 2, 0, T / 2 + 0.25, L / 2), wc(0, -L / 2 + T / 2, W / 2, T / 2),
+      wc(-(R + side / 2), L / 2 - T / 2, side / 2, T / 2), wc(R + side / 2, L / 2 - T / 2, side / 2, T / 2)];
+    return {
+      walls, open: true, hearth: -1, windows: [], w: W, d: L, fh: wh, chapel: true,
+      interior: { hw: W / 2 - T - Ln, hd: L / 2 - T - Ln, ceil: wh - 0.3 },
+      doorway: { u: 0, z: L / 2 - T / 2 }, door: { x: dx, z: dz, heading: S.rot }, smoke: [], floor: fl, ridge: fl + top + 1.8,
+      front: world(0, L / 2), rot: S.rot, x: S.x, z: S.z, bell: new THREE.Vector3(bx, fl + top + 0.6, bzz),
+      sign: (u, h) => { const [x, z] = world(u, L / 2 + 0.05); return new THREE.Vector3(x, fl + h, z); },
+      at: (lx, ly, lz) => { const [x, z] = world(lx, lz); return new THREE.Vector3(x, fl + ly, z); },
+    };
+  }
+
   // merge each bucket into one geometry (null where nothing went in)
   merged() {
     const out = {};
     for (const b of BUCKETS) out[b] = this.parts[b].length ? mergeGeometries(this.parts[b], false) : null;
     return out;
   }
+}
+
+// the leaf of an arched door, hinged at its left edge (x = 0), 6 cm thick, its texture across its face
+export function doorLeaf() {
+  const r = DOORWAY.leaf, hs = DOORWAY.hs, sh = new THREE.Shape();
+  sh.moveTo(0, 0); sh.lineTo(2 * r, 0); sh.lineTo(2 * r, hs); sh.absarc(r, hs, r, 0, Math.PI, false); sh.lineTo(0, 0);
+  const g = new THREE.ExtrudeGeometry(sh, { depth: 0.06, bevelEnabled: false, curveSegments: 12 }).translate(0, 0, -0.03);
+  const q = g.attributes.position, uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, q.getX(i) / (2 * r), q.getY(i) / (hs + r));
+  return g;
 }

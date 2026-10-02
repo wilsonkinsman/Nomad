@@ -207,3 +207,42 @@ export function signTex(kind, label) {
   ctx.fillStyle = '#f2e6c4'; ctx.font = '600 25px Georgia, serif'; ctx.textAlign = 'center'; ctx.fillText(label, 128, 168);
   const t = tex(c); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t;
 }
+
+// stained glass: panes of ruby, cobalt, emerald, amber and violet in a lattice of lead, a tree of life in the middle
+// (the same picture serves as its own glow, so it shines from inside by day and from outside by night)
+export function stainedGlass() {
+  const W = 128, H = 256, c = canvas(W, H), ctx = c.getContext('2d'), rnd = mulberry32(71);
+  const COLS = ['#8a1a24', '#1e3a8a', '#1f6a3a', '#c88a1a', '#5a2a7a', '#b84a1a', '#2a6a8a'];
+  ctx.fillStyle = '#101010'; ctx.fillRect(0, 0, W, H);
+  const n = 7, m = 14, cw = W / n, ch = H / m;
+  for (let j = 0; j < m; j++) for (let i = 0; i < n; i++) {
+    ctx.fillStyle = COLS[(rnd() * COLS.length) | 0]; ctx.globalAlpha = 0.75 + rnd() * 0.25;
+    ctx.beginPath(); ctx.moveTo(i * cw + cw / 2, j * ch); ctx.lineTo((i + 1) * cw, j * ch + ch / 2); ctx.lineTo(i * cw + cw / 2, (j + 1) * ch); ctx.lineTo(i * cw, j * ch + ch / 2); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = COLS[(rnd() * COLS.length) | 0];
+    for (const [x, y] of [[i * cw, j * ch], [(i + 1) * cw, j * ch], [i * cw, (j + 1) * ch], [(i + 1) * cw, (j + 1) * ch]]) { ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + (x > i * cw ? -cw / 2 : cw / 2), y); ctx.lineTo(x, y + (y > j * ch ? -ch / 2 : ch / 2)); ctx.fill(); }
+  }
+  ctx.globalAlpha = 1;
+  // the tree: a gold trunk and a green crown on a pale ground
+  ctx.fillStyle = '#e8dcb0'; ctx.beginPath(); ctx.ellipse(W / 2, H * 0.45, 40, 70, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#c8901a'; ctx.fillRect(W / 2 - 6, H * 0.45, 12, 60);
+  ctx.fillStyle = '#2f7a3a'; for (const [x, y, r] of [[0, -30, 26], [-18, -10, 20], [18, -10, 20], [0, -6, 18]]) { ctx.beginPath(); ctx.arc(W / 2 + x, H * 0.45 + y, r, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = '#b8222a'; for (let k = 0; k < 7; k++) { ctx.beginPath(); ctx.arc(W / 2 + (rnd() - 0.5) * 50, H * 0.45 - 30 + rnd() * 34, 3.5, 0, Math.PI * 2); ctx.fill(); }
+  // the leading
+  ctx.strokeStyle = '#141210'; ctx.lineWidth = 3;
+  for (let j = 0; j <= m; j++) { ctx.beginPath(); ctx.moveTo(0, j * ch); ctx.lineTo(W, j * ch); ctx.stroke(); }
+  for (let i = 0; i <= n; i++) { ctx.beginPath(); ctx.moveTo(i * cw, 0); ctx.lineTo(i * cw, H); ctx.stroke(); }
+  ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(W / 2, H * 0.45, 40, 70, 0, 0, Math.PI * 2); ctx.stroke();
+  const t = tex(c); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t;
+}
+
+// a woven rug: a field of one colour, a border of another, a pattern of lozenges down the middle
+export function rugTex(a, b, seed = 1) {
+  const c = canvas(128, 192), ctx = c.getContext('2d'), rnd = mulberry32(seed * 31);
+  ctx.fillStyle = a; ctx.fillRect(0, 0, 128, 192);
+  ctx.strokeStyle = b; ctx.lineWidth = 8; ctx.strokeRect(10, 10, 108, 172);
+  ctx.lineWidth = 3; ctx.strokeRect(22, 22, 84, 148);
+  ctx.fillStyle = b;
+  for (let k = 0; k < 4; k++) { const y = 46 + k * 34; ctx.beginPath(); ctx.moveTo(64, y - 14); ctx.lineTo(80, y); ctx.lineTo(64, y + 14); ctx.lineTo(48, y); ctx.closePath(); ctx.fill(); }
+  for (let i = 0; i < 1600; i++) { ctx.fillStyle = `rgba(${rnd() < 0.5 ? '0,0,0' : '255,240,220'},${rnd() * 0.12})`; ctx.fillRect(rnd() * 128, rnd() * 192, 1, 2); }
+  const t = tex(c); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t;
+}

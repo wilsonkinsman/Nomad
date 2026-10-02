@@ -33,11 +33,11 @@ export class Pipeline {
       tColor: { value: null }, tDepth: { value: null }, tRays: { value: this.rayB.texture }, tSky: { value: sky.lut.texture },
       uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uCamPos: { value: new THREE.Vector3() },
       uSunDir: { value: sky.lightDir }, uSunCol: { value: new THREE.Vector3() },
-      uHaze: { value: sky.fog.haze }, uMist: { value: sky.fog.mist }, uScatter: { value: 1 }, uRays: { value: 0 }, uTime: { value: 0 },
+      uHaze: { value: sky.fog.haze }, uMist: { value: sky.fog.mist }, uScatter: { value: 1 }, uRays: { value: 0 }, uTime: { value: 0 }, uIndoor: { value: 0 },
     };
     this.fog = new Quad(shader(this.fogU, `
       uniform sampler2D tColor, tDepth, tRays, tSky; uniform mat4 uInvProj, uCamWorld; uniform vec3 uCamPos, uSunDir, uSunCol;
-      uniform vec4 uHaze, uMist; uniform float uScatter, uRays, uTime; varying vec2 vUv;
+      uniform vec4 uHaze, uMist; uniform float uScatter, uRays, uTime, uIndoor; varying vec2 vUv;
       ${SKYUV}
       float od(vec4 f, float y0, float dy, float d){
         float k = f.y * dy; float base = f.x * exp(-f.y * (y0 - f.z));
@@ -58,7 +58,8 @@ export class Pipeline {
         vec2 mp = (uCamPos.xz + rd.xz * min(d, 60.0)) * 0.03 + uTime * vec2(0.012, 0.004);
         float bank = 0.55 + 0.9 * vn(mp) * vn(mp * 2.3 + 4.0);
         vec4 mist = uMist; mist.x *= bank;
-        float o = od(uHaze, uCamPos.y, rd.y, d) + od(mist, uCamPos.y, rd.y, min(d, 900.0));
+        // (indoors there is no mist, and the haze is only what lies beyond the doorway)
+        float o = od(uHaze, uCamPos.y, rd.y, d) + od(mist, uCamPos.y, rd.y, min(d, 900.0)) * (1.0 - uIndoor * smoothstep(12.0, 4.0, d));
         float T = exp(-o);
         if (isSky) T = mix(T, 1.0, 0.55);
         vec3 fogCol = texture2D(tSky, skyUV(normalize(vec3(rd.x, max(rd.y, 0.02), rd.z)))).rgb;
@@ -223,6 +224,7 @@ export class Pipeline {
     f.uCamPos.value.copy(cam.position);
     f.uSunCol.value.set(sky.lightColor.r, sky.lightColor.g, sky.lightColor.b);
     f.uScatter.value = sky.fog.scatter;
+    f.uIndoor.value = this.indoor || 0;           // (set by the camera: how far indoors it is)
     f.uTime.value += dt;
     this.fog.render(r, this.hdr);
 
