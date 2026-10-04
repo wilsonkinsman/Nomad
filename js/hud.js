@@ -1,12 +1,15 @@
 // Minimal HUD in the spirit of the reference: a compass strip with the four lands marked,
 // a quiet stamina ring, and a title card when you walk into a new land.
-import { ZONES } from './world.js';
+import { ZONES, SHRINE } from './world.js';
 
 const TITLES = {
   grass: { en: 'Whisper Meadow', jp: '<ruby>風<rt>かぜ</rt></ruby>の<ruby>草原<rt>そうげん</rt></ruby>' },
   wheat: { en: 'The Golden Reach', jp: '<ruby>黄金<rt>おうごん</rt></ruby>の<ruby>麦畑<rt>むぎばたけ</rt></ruby>' },
   leaves: { en: 'Hollow of Falling Leaves', jp: '<ruby>落<rt>お</rt></ruby>ち<ruby>葉<rt>ば</rt></ruby>の<ruby>谷<rt>たに</rt></ruby>' },
   snow: { en: 'Frostveil Rise', jp: '<ruby>雪<rt>ゆき</rt></ruby>の<ruby>丘<rt>おか</rt></ruby>' },
+  // the shrine's keeper, and the quiet after it
+  tsuchigumo: { en: 'Tsuchigumo', jp: '<ruby>土蜘蛛<rt>つちぐも</rt></ruby>' },
+  quiet: { en: 'The Shrine Is Quiet', jp: '<ruby>社<rt>やしろ</rt></ruby>に<ruby>静<rt>しず</rt></ruby>けさが<ruby>戻<rt>もど</rt></ruby>る' },
 };
 
 export class Hud {
@@ -23,6 +26,7 @@ export class Hud {
     for (let b = 0; b < 360; b += 15) if (b % 90) add(b % 45 ? '·' : '|', b, 'minor');
     this.zoneMarks = [
       { m: add('❋', 0, 'zone'), z: ZONES.wheat }, { m: add('❦', 0, 'zone'), z: ZONES.leaves }, { m: add('❄', 0, 'zone'), z: ZONES.snow },
+      { m: add('⛩\uFE0E', 0, 'zone shrine'), z: { cx: SHRINE.x, cz: SHRINE.z } },
     ];
     this.sunMark = add('☼', 0, 'zone');
     this.title = document.getElementById('zone-title');
@@ -33,6 +37,14 @@ export class Hud {
     this.callEl = document.getElementById('callout'); this.hpEl = document.getElementById('hp-fill'); this.hpBox = document.getElementById('hp');
     this.hurtEl = document.getElementById('hurt'); this.crossEl = document.getElementById('crosshair'); this.floatsEl = document.getElementById('floats');
     this.floats = []; this._v = null;
+    this.bossEl = document.getElementById('boss'); this.bossFill = document.getElementById('boss-fill'); this.bossLag = document.getElementById('boss-lag');
+  }
+
+  // the boss's bar under the compass: shown or not, how much is left (0..1), and whether it is enraged
+  boss(on, frac = 1, enraged = false) {
+    const w = (Math.max(0, frac) * 100).toFixed(1) + '%';
+    this.bossEl.classList.toggle('show', on); this.bossEl.classList.toggle('enraged', enraged);
+    if (w !== this._bossW) { this._bossW = w; this.bossFill.style.width = w; this.bossLag.style.width = w; }
   }
 
   // a word in the middle of the screen (PARRY, HIT, DODGE...): cls is 'gold', 'red' or ''

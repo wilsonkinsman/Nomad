@@ -36,7 +36,7 @@ export class Leaves {
     this.rest = new Float32Array(MAX);           // resting height offset (layering)
     this.cellOf = new Int32Array(MAX);
     this.active = [];
-    this.trees = trees.filter(t => t.kind !== 'pine');
+    this.trees = trees.filter(t => t.kind !== 'pine' && t.kind !== 'cedar');       // evergreens shed nothing
     const z = ZONES.leaves, s = {};
     const mat = new THREE.MeshStandardMaterial({ map: atlas, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.75 });
     mat.onBeforeCompile = (sh) => {

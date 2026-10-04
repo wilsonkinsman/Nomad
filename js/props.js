@@ -3,7 +3,7 @@
 // that flutters in the wind (real cloth).
 import * as THREE from 'three';
 import { mergeGeometries } from '../lib/utils/BufferGeometryUtils.js';
-import { groundY, surfaceAt, PATHS, SPAWN } from './world.js';
+import { groundY, surfaceAt, PATHS, SPAWN, SHRINE } from './world.js';
 import { Cloth } from './cloth.js';
 import { mulberry32, vnoise, GLSL_NOISE } from './util.js';
 
@@ -64,6 +64,8 @@ export class Props {
       const big = rnd() < 0.18;
       spots.push({ x, z, r: big ? 0.9 + rnd() * 1.4 : 0.2 + rnd() * 0.45, v: (rnd() * 4) | 0, moss: s.grass + s.leaves * 0.5, snow: s.snow });
     }
+    // none on the shrine's terrace or its bank (the shrine brings its own stones)
+    for (let i = spots.length - 1; i >= 0; i--) if (Math.hypot(spots[i].x - SHRINE.x, spots[i].z - SHRINE.z) < SHRINE.terrace + SHRINE.slope + 1) spots.splice(i, 1);
     const byV = [[], [], [], []];
     for (const sp of spots) byV[sp.v].push(sp);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), c = new THREE.Color();

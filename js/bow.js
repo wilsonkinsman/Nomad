@@ -199,7 +199,7 @@ export class Bow {
       if (y < groundY(x, z)) return out.set(x, y, z);
       for (const c of G.enemies?.targets || []) if (!c.dead) {
         const gy = groundY(c.x, c.z);
-        if (Math.hypot(x - c.x, z - c.z) < c.r + 0.1 && y > gy && y < gy + (c.y1 || 1.9)) return out.set(x, y, z);
+        if (Math.hypot(x - c.x, z - c.z) < c.r + 0.1 && y > gy + (c.y0 || 0) && y < gy + (c.y1 || 1.9)) return out.set(x, y, z);
       }
     }
     return out.set(o.x + d.x * 90, o.y + d.y * 90, o.z + d.z * 90);
@@ -241,7 +241,7 @@ export class Bow {
       for (const c of G.enemies?.targets || []) {
         if (c.dead) continue;
         const cy = groundY(c.x, c.z);
-        if (Math.hypot(a.pos.x - c.x, a.pos.z - c.z) < c.r && a.pos.y > cy && a.pos.y < cy + (c.y1 || 1.9)) { this.hit(a, c, a.pos.y - cy); return true; }
+        if (Math.hypot(a.pos.x - c.x, a.pos.z - c.z) < c.r && a.pos.y > cy + (c.y0 || 0) && a.pos.y < cy + (c.y1 || 1.9)) { this.hit(a, c, a.pos.y - cy); return true; }
       }
       // an Earth Wall: the arrow shatters on the stone
       const wall = G.earth?.blockArrow(a.pos);
@@ -268,7 +268,7 @@ export class Bow {
     this.game.audio?.bow('stick');
   }
   hit(a, c, height) {
-    const G = this.game, head = height > 1.6;
+    const G = this.game, head = c.head ?? height > 1.6;
     let dmg = Math.round(6 + 34 * a.charge * a.charge);
     if (head) dmg = Math.round(dmg * 1.5);
     c.onHit?.('arrow', dmg, a.vel.x, a.vel.z);
@@ -276,7 +276,7 @@ export class Bow {
     G.audio?.bow('hit'); G.rig.shake = Math.max(G.rig.shake, 0.18);
     for (let i = 0; i < 6; i++) G.particles.emit('dust', a.pos.x, a.pos.y, a.pos.z, -a.vel.x * 0.04, 0.8, -a.vel.z * 0.04, 1.2, 1);
     // it stays in what it hit, and moves with it
-    const host = (c.dummy && c.dummy.tilt) || (c.enemy && c.enemy.group) || null;
+    const host = c.host || (c.dummy && c.dummy.tilt) || (c.enemy && c.enemy.group) || null;
     if (host) { host.add(a.mesh); a.mesh.position.copy(host.worldToLocal(a.pos.clone())); a.mesh.quaternion.copy(host.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(a.mesh.quaternion)); }
     this.stick(a, host);
   }

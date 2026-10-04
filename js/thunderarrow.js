@@ -131,7 +131,7 @@ export class ThunderArrows {
       if (Math.random() < 0.5) G.particles.emit('clip', x, gy + 0.2, z, (Math.random() - 0.5) * 6, 3 + Math.random() * 3, (Math.random() - 0.5) * 6, 1.2, 2);
     }
     for (const c of G.enemies?.targets || []) {
-      if (c.dead || s.hit.has(c)) continue;
+      if (c.dead || c.high || s.hit.has(c)) continue;
       const ex = c.x - x, ez = c.z - z;
       if (Math.hypot(ex, ez) > c.r + WIDTH) continue;
       s.hit.add(c);

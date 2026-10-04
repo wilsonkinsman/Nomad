@@ -40,7 +40,7 @@ export class CameraRig {
     this.pull = damp(this.pull, pullT, pullT > this.pull ? 0.9 : 1.4, dt);
     const eye = player.model.camHeight ?? 1.48, hs1 = eye / 1.48;     // shorter characters: lower, closer camera
     const zoom = player.aimZoom || 0;
-    const far = player.aimPull || 0;          // a Thunder Arrow being charged: the camera pulls far back
+    const far = Math.max(player.aimPull || 0, player.camPull || 0);          // a Thunder Arrow being charged, or something huge to fight: the camera pulls back
     const arm = (this.dist + this.pull) * Math.sqrt(hs1) * (1 - 0.35 * zoom) * (1 + 1.9 * far);
 
     // focus trails the body a little: feels like a heavy camera operator
@@ -58,7 +58,7 @@ export class CameraRig {
     const shoulder = 0.55 * Math.min(1, this.dist / 3.6) + 0.6 * zoom;
     const gp = this.focus.clone().addScaledVector(back, arm).addScaledVector(right, shoulder);
     gp.y += this.pull * 0.3 + far * 1.6;
-    const gl = this.focus.clone().addScaledVector(right, shoulder * 0.85).add(new THREE.Vector3(0, -0.05, 0));
+    const gl = this.focus.clone().addScaledVector(right, shoulder * 0.85).add(new THREE.Vector3(0, -0.05 + (player.camLift || 0), 0));     // camLift: look up at something huge
 
     // menu orbit: slow drift around the nomad, sun behind them
     this.menuT += dt;

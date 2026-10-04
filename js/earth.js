@@ -232,7 +232,7 @@ export class Earth {
   cage(x, z) {
     const G = this.game;
     let R = 5.5;
-    for (const c of G.enemies?.targets || []) { if (c.dead) continue; const d = Math.hypot(c.x - x, c.z - z); if (d < 10) R = Math.max(R, Math.min(8.5, d + 1.8)); }
+    for (const c of G.enemies?.targets || []) { if (c.dead || c.high) continue; const d = Math.hypot(c.x - x, c.z - z); if (d < 10) R = Math.max(R, Math.min(8.5, d + 1.8)); }
     const n = Math.ceil(2 * Math.PI * R / 2.3), chord = 2 * R * Math.sin(Math.PI / n) + 0.5;
     for (let i = 0; i < n; i++) {
       const a = (i + 0.5) / n * Math.PI * 2, wx = x + Math.cos(a) * R, wz = z + Math.sin(a) * R;
@@ -378,7 +378,7 @@ export class Earth {
         for (const c of G.enemies?.targets || []) {
           if (c.dead) continue;
           const cy = groundY(c.x, c.z), dx = c.x - p.x, dz = c.z - p.z;
-          if (Math.hypot(dx, dz) < c.r + r.r && p.y > cy - 0.2 && p.y < cy + (c.y1 || 1.9)) {
+          if (Math.hypot(dx, dz) < c.r + r.r && p.y > cy + (c.y0 || 0) - 0.2 && p.y < cy + (c.y1 || 1.9)) {
             c.onHit?.('rock', KICK_DMG, r.vel.x, r.vel.z, { knock: KICK_KNOCK });
             G.hitStop = Math.max(G.hitStop, 0.12); G.audio?.sword('hit'); G.rig.shake = 1;
             this.shatter(r, p.x, p.y, p.z); done = true; break;

@@ -33,11 +33,11 @@ export class Pipeline {
       tColor: { value: null }, tDepth: { value: null }, tRays: { value: this.rayB.texture }, tSky: { value: sky.lut.texture },
       uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() }, uCamPos: { value: new THREE.Vector3() },
       uSunDir: { value: sky.lightDir }, uSunCol: { value: new THREE.Vector3() },
-      uHaze: { value: sky.fog.haze }, uMist: { value: sky.fog.mist }, uScatter: { value: 1 }, uRays: { value: 0 }, uTime: { value: 0 },
+      uHaze: { value: sky.fog.haze }, uMist: { value: sky.fog.mist }, uScatter: { value: 1 }, uRays: { value: 0 }, uTime: { value: 0 }, uGloom: { value: 0 },
     };
     this.fog = new Quad(shader(this.fogU, `
       uniform sampler2D tColor, tDepth, tRays, tSky; uniform mat4 uInvProj, uCamWorld; uniform vec3 uCamPos, uSunDir, uSunCol;
-      uniform vec4 uHaze, uMist; uniform float uScatter, uRays, uTime; varying vec2 vUv;
+      uniform vec4 uHaze, uMist; uniform float uScatter, uRays, uTime, uGloom; varying vec2 vUv;
       ${SKYUV}
       float od(vec4 f, float y0, float dy, float d){
         float k = f.y * dy; float base = f.x * exp(-f.y * (y0 - f.z));
@@ -62,6 +62,7 @@ export class Pipeline {
         float T = exp(-o);
         if (isSky) T = mix(T, 1.0, 0.55);
         vec3 fogCol = texture2D(tSky, skyUV(normalize(vec3(rd.x, max(rd.y, 0.02), rd.z)))).rgb;
+        fogCol = mix(fogCol, vec3(dot(fogCol, vec3(0.3, 0.55, 0.15))) * vec3(0.74, 0.82, 0.92) * 0.85, uGloom * 0.9);   // the gloom: grey, cold
         float mu = dot(rd, uSunDir), g = 0.62;
         float hg = (1.0 - g*g) / pow(1.0 + g*g - 2.0*g*mu, 1.5) / 12.566;
         vec3 ins = fogCol * 0.95 + uSunCol * hg * uScatter * 0.32;
@@ -223,6 +224,7 @@ export class Pipeline {
     f.uCamPos.value.copy(cam.position);
     f.uSunCol.value.set(sky.lightColor.r, sky.lightColor.g, sky.lightColor.b);
     f.uScatter.value = sky.fog.scatter;
+    f.uGloom.value = sky.fog.gloom;
     f.uTime.value += dt;
     this.fog.render(r, this.hdr);
 

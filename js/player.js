@@ -87,7 +87,7 @@ export class Player {
       this.vel.x += dx / l * 6; this.vel.z += dz / l * 6;
     }
     if (this.weapon && this.weapon.kind && this.weapon.kind !== 'sheathe') this.weapon.begin('sheathe');      // the blow knocks the blade from his guard
-    if (this.hp <= 0) { g.hud?.callout('DEFEATED', 'red'); this.hp = this.maxHp; this.invuln = 1.5; }
+    if (this.hp <= 0) { g.hud?.callout('DEFEATED', 'red'); this.hp = this.maxHp; this.invuln = 1.5; this.emit('defeated'); }
     return 'hit';
   }
 

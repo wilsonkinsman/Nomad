@@ -1,10 +1,10 @@
 // Procedural trees: recursive branching trunks with bark, foliage made of leaf-cluster cards
 // with sphere-like normals (soft, volumetric shading), wind sway, and backlit translucency.
 // Autumn maples, oaks and birches in the hollow, green trees and bushes in the meadow, a lone
-// tree in the wheat, and snow-laden pines on the rise.
+// tree in the wheat, snow-laden pines on the rise, and a grove of tall dark cedars round the old shrine.
 import * as THREE from 'three';
 import { mergeGeometries } from '../lib/utils/BufferGeometryUtils.js';
-import { groundY, surfaceAt, ZONES, SPAWN } from './world.js';
+import { groundY, surfaceAt, ZONES, SPAWN, SHRINE } from './world.js';
 import { GLSL_WIND } from './wind.js';
 import { addTranslucency } from './grass.js';
 import { mulberry32, GLSL_NOISE } from './util.js';
@@ -16,6 +16,7 @@ const TYPES = {
   green: { cell: 2, bark: 'bark', h: [8, 11], spread: 1.0, depth: 4, leaf: 1.6, tint: 0xffffff, cards: 14 },
   lone:  { cell: 2, bark: 'bark', h: [6.5, 7.5], spread: 1.25, depth: 4, leaf: 1.5, tint: 0xf0d890, cards: 14 },
   bush:  { cell: 2, bark: 'bark', h: [1.2, 1.8], spread: 1.6, depth: 2, leaf: 0.9, tint: 0xc8d8a8, cards: 16 },
+  cedar: { tint: 0x7d9070 },          // grown like a pine (growPine), but bare to half its height and never snowy
 };
 
 function cyl(a, b, r0, r1, segs, out) {
@@ -82,13 +83,14 @@ function growDeciduous(T, rnd) {
   return { bark: mergeGeometries(bark), leaves: mergeGeometries(leaves), H, canopyY: canopyC.y, canopyR: H * 0.35 * T.spread };
 }
 
-function growPine(rnd, H) {
+// crown: height the branches start at, trunk: radius at the foot, reach: branch length per metre of tree
+function growPine(rnd, H, { crown = 1.2, trunk = 0.26, reach = 0.32 } = {}) {
   const bark = [], leaves = [];
-  cyl(new THREE.Vector3(0, -0.3, 0), new THREE.Vector3(0, H, 0), 0.26, 0.03, 8, bark);
+  cyl(new THREE.Vector3(0, -0.3, 0), new THREE.Vector3(0, H, 0), trunk, 0.03, 8, bark);
   const canopyC = new THREE.Vector3(0, H * 0.45, 0);
-  for (let y = 1.2; y < H - 0.3; y += 0.3 + rnd() * 0.1) {
-    const u = (y - 1.2) / (H - 1.5);
-    const L = (1 - u) * H * 0.32 + 0.4;
+  for (let y = crown; y < H - 0.3; y += 0.3 + rnd() * 0.1) {
+    const u = (y - crown) / (H - crown - 0.3);
+    const L = (1 - u) * H * reach + 0.4;
     const n = Math.max(4, Math.round(9 * (1 - u) + 4));
     for (let k = 0; k < n; k++) {
       const a = k / n * Math.PI * 2 + rnd() * 0.5;
@@ -152,6 +154,19 @@ export class Trees {
       surfaceAt(x, z, s);
       if (s.path < 0.2 && s.grass > 0.5) this.list.push({ x, z, kind: 'bush', rot: rnd() * 6, s: 0.7 + rnd() * 0.5 });
     }
+    // the shrine's clearing is kept open, and old cedars stand round it (their own seed, so the rest of the
+    // land grows as it did); none in front of the steps
+    const clear = SHRINE.terrace + SHRINE.slope + 1.5;
+    this.list = this.list.filter((t) => Math.hypot(t.x - SHRINE.x, t.z - SHRINE.z) > clear);
+    const crnd = mulberry32(321);
+    for (let i = 0, guard = 0; i < 24 && guard++ < 600;) {
+      const a = crnd() * Math.PI * 2, r = clear + 1 + crnd() * 12, x = SHRINE.x + Math.sin(a) * r, z = SHRINE.z + Math.cos(a) * r;
+      const off = Math.abs(Math.atan2(Math.sin(a - SHRINE.face), Math.cos(a - SHRINE.face)));
+      if (off < 0.38 + 4 / r) continue;
+      surfaceAt(x, z, s);
+      if (s.path > 0.1 || this.list.some(t => Math.hypot(t.x - x, t.z - z) < 4.6)) continue;
+      this.list.push({ x, z, kind: 'cedar', rot: crnd() * Math.PI * 2, s: 0.9 + crnd() * 0.25 }); i++;
+    }
 
     // materials
     const barkM = new THREE.MeshStandardMaterial({ map: tx.bark.map, normalMap: tx.bark.normal, roughness: 0.95 });
@@ -208,7 +223,10 @@ export class Trees {
     for (const [kind, trees] of Object.entries(byKind)) {
       const nVar = kind === 'lone' ? 1 : Math.min(3, trees.length);
       variants[kind] = [];
-      for (let v = 0; v < nVar; v++) variants[kind].push(kind === 'pine' ? growPine(rnd, 9 + rnd() * 5) : growDeciduous(TYPES[kind], rnd));
+      for (let v = 0; v < nVar; v++) {
+        const H = kind === 'cedar' ? 19 + rnd() * 5 : kind === 'pine' ? 9 + rnd() * 5 : 0;
+        variants[kind].push(kind === 'pine' ? growPine(rnd, H) : kind === 'cedar' ? growPine(rnd, H, { crown: H * 0.42, trunk: 0.42, reach: 0.19 }) : growDeciduous(TYPES[kind], rnd));
+      }
       for (let v = 0; v < nVar; v++) {
         const mine = trees.filter((_, i) => i % nVar === v);
         if (!mine.length) continue;
@@ -224,7 +242,8 @@ export class Trees {
             group.add(m);
           }
           t.canopyY = V.canopyY * t.s; t.canopyR = V.canopyR * t.s; t.H = V.H * t.s;
-          if (kind !== 'bush') this.colliders.push({ x: t.x, z: t.z, r: (kind === 'pine' ? 0.28 : 0.3) * t.s * (V.H / 10) + 0.12 });
+          if (kind === 'cedar') this.colliders.push({ x: t.x, z: t.z, r: 0.42 * t.s + 0.1 });
+          else if (kind !== 'bush') this.colliders.push({ x: t.x, z: t.z, r: (kind === 'pine' ? 0.28 : 0.3) * t.s * (V.H / 10) + 0.12 });
           else this.colliders.push({ x: t.x, z: t.z, r: 0.35 * t.s });
         });
       }

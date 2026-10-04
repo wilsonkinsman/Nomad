@@ -29,6 +29,8 @@ import { Bow } from './bow.js';
 import { Storm } from './storm.js';
 import { Tackle } from './tackle.js';
 import { Earth } from './earth.js';
+import { Shrine } from './shrine.js';
+import { Tsuchigumo } from './tsuchigumo.js';
 
 const QUALITY = {
   low:    { ratio: 0.6,  msaa: 0, shadow: 1024, veg: 0.5 },
@@ -111,6 +113,8 @@ async function boot() {
   game.particles = new Particles(game, softSprite());
   game.trees = new Trees(game, tx);
   game.props = new Props(game, tx);
+  game.shrine = new Shrine(game, tx);
+  game.props.colliders.push(...game.shrine.colliders);       // arrows stick in it, the sword thuds on it
   game.grass = new Grass(game);
   game.wheat = new Wheat(game);
   await progress(0.8, 'Letting the snow settle…');
@@ -126,12 +130,15 @@ async function boot() {
   game.flash = new Flash(game);
   game.enemies = new Enemies(game);
   game.player.colliders.push(...game.enemies.colliders);
+  game.boss = new Tsuchigumo(game);            // the shrine's keeper
+  game.enemies.targets.push(...game.boss.targets);
+  game.player.colliders.push(...game.boss.colliders);
   game.bow = new Bow(game);
   game.storm = new Storm(game);
   game.tackle = new Tackle(game);
   game.earth = new Earth(game);
   game.systems.push(game.grass, game.wheat, game.snow, game.leaves, game.props, game.particles, game.fireflies, game.hud, game.audio);
-  game.systems.push(game.flash, game.enemies, game.bow, game.storm, game.tackle, game.earth);
+  game.systems.push(game.flash, game.enemies, game.bow, game.storm, game.tackle, game.earth, game.shrine, game.boss);
   game.systems.unshift(game.contact);    // body hitboxes stamp before the snow and leaves update
   wireEvents();
   game.sky.setNight(settings.night);
@@ -259,15 +266,17 @@ function update(dt) {
   game.time += dt;
   input.pollPad();
   if (input.pressed.has('Escape') && game.state === 'play') showMenu(true);
+  if (game.cutscene) { input.pressed.clear(); input.mouseDown = false; }       // a cutscene: he stands and watches
   const inMenu = game.state !== 'play';
   game.wind.update(dt);
-  game.player.update(dt, inMenu);
+  game.player.update(dt, inMenu || !!game.cutscene);
   interact(dt);
   for (const s of game.systems) s.update?.(dt, game);
   game.trample.update(dt);
   game.cut.update(dt);
   game.burn.update(dt);
   rig.update(dt, game.player, input, inMenu);
+  game.boss?.directCamera(dt);                // the boss's entrance takes the camera from the rig
   game.sky.update(dt, game.player.pos);
   game.sky.followCamera(camera);
   input.endFrame();

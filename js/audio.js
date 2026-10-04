@@ -221,6 +221,65 @@ export class Audio {
     } finally { this.bus = null; }
   }
 
+  // the shrine's keeper. Its voice (voice()) is a screech: detuned saws dragged up and down with a fast rasp
+  // on them, breath through it and a growl under it, all driven hard
+  boss(kind, k = 1) {
+    if (!this.ctx) return;
+    if (!this.bossBus) { this.bossBus = this.ctx.createGain(); this.bossBus.gain.value = 0.85; this.bossBus.connect(this.master); }
+    this.bus = this.bossBus;
+    try {
+      const t = this.ctx.currentTime + 0.005, R = Math.random;
+      switch (kind) {
+        case 'creak': this.sweep(t, 70, 140, 60, 9, 1.4, 0.22); for (let i = 0; i < 6; i++) this.grain(t + 0.2 + i * 0.17 + R() * 0.05, 900 + R() * 600, 6, 0.03, 0.06); break;
+        case 'fall': this.sweep(t, 160, 520, 1400, 2.2, 1.7, 0.3); this.sweep(t + 0.3, 90, 260, 700, 1.4, 1.4, 0.2); break;
+        case 'land': this.thump(t, 46, 1.4, 1.0); this.thump(t, 92, 0.5, 0.8); this.grain(t, 280, 0.6, 1.2, 0.7, 'lowpass'); for (let i = 0; i < 10; i++) this.grain(t + R() * 0.25, 1200 + R() * 2400, 3, 0.04, 0.22); break;
+        case 'step': this.thump(t, 55 + R() * 15, 0.22, 0.22 * k); this.grain(t, 400, 0.8, 0.12, 0.06 * k, 'lowpass'); break;
+        case 'hiss': this.sweep(t, 3800, 5200, 4200, 1.2, 0.7, 0.16); break;
+        case 'rattle': for (let i = 0; i < 16; i++) this.grain(t + i * 0.035 + R() * 0.008, 1600 + R() * 1400, 4, 0.012, 0.16 * (1 - i / 18)); break;
+        case 'stab': this.thump(t, 62, 0.4, 0.9); this.grain(t, 1300, 1, 0.08, 0.4); this.grain(t, 300, 0.7, 0.4, 0.4, 'lowpass'); break;
+        case 'bite': this.grain(t, 2000, 2.5, 0.05, 0.6); this.thump(t, 150, 0.09, 0.5); this.grain(t + 0.02, 900, 3, 0.04, 0.4); break;
+        case 'sweep': this.sweep(t, 140, 700, 180, 1.0, 0.55, 0.45); break;
+        case 'slam': this.thump(t, 50, 0.9, 1.0); this.thump(t + 0.03, 110, 0.3, 0.6); this.grain(t, 350, 0.6, 0.6, 0.5, 'lowpass'); break;
+        case 'scream': this.voice(t, 1.9, 1); break;
+        case 'shriek': this.voice(t, 0.7, 1.15); break;
+        case 'die': this.voice(t, 3.2, 0.72); break;
+      }
+    } finally { this.bus = null; }
+  }
+  voice(t, dur, pitch) {
+    const ctx = this.ctx, out = ctx.createGain(), sh = ctx.createWaveShaper(), curve = new Float32Array(1024);
+    for (let i = 0; i < 1024; i++) curve[i] = Math.tanh((i / 511.5 - 1) * 3.2);
+    sh.curve = curve;
+    const tone = ctx.createBiquadFilter(); tone.type = 'peaking'; tone.frequency.value = 2400; tone.Q.value = 1.2; tone.gain.value = 8;
+    out.gain.setValueAtTime(0, t); out.gain.linearRampToValueAtTime(0.5, t + 0.07); out.gain.setValueAtTime(0.5, t + dur * 0.7); out.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    sh.connect(tone).connect(out).connect(this.bus || this.master);
+    const rasp = ctx.createOscillator(), rg = ctx.createGain(); rasp.frequency.value = 38; rg.gain.value = 70 * pitch; rasp.connect(rg);
+    for (const [det, type, g] of [[1, 'sawtooth', 0.22], [1.013, 'sawtooth', 0.18], [0.497, 'square', 0.1]]) {
+      const o = ctx.createOscillator(), og = ctx.createGain(), f0 = 620 * pitch * det; o.type = type;
+      o.frequency.setValueAtTime(f0 * 0.7, t); o.frequency.exponentialRampToValueAtTime(f0 * 1.45, t + dur * 0.25); o.frequency.exponentialRampToValueAtTime(f0 * 0.62, t + dur);
+      rg.connect(o.frequency); og.gain.value = g;
+      o.connect(og).connect(sh); o.start(t); o.stop(t + dur + 0.05);
+    }
+    const lo = ctx.createOscillator(), lg = ctx.createGain(); lo.type = 'sawtooth';
+    lo.frequency.setValueAtTime(95 * pitch, t); lo.frequency.exponentialRampToValueAtTime(70 * pitch, t + dur);
+    lg.gain.value = 0.35; lo.connect(lg).connect(sh); lo.start(t); lo.stop(t + dur + 0.05);
+    rasp.start(t); rasp.stop(t + dur + 0.05);
+    this.sweep(t, 1800 * pitch, 3200 * pitch, 1400 * pitch, 1.6, dur, 0.4);
+  }
+  // a low unease under the fight: two slow-beating saws, felt more than heard
+  drone(on) {
+    if (!this.ctx) return;
+    const ctx = this.ctx;
+    if (on && !this.droneG) {
+      const g = this.droneG = ctx.createGain(), f = ctx.createBiquadFilter(); g.gain.value = 0;
+      f.type = 'lowpass'; f.frequency.value = 220; f.Q.value = 0.8; f.connect(g).connect(this.master);
+      for (const [hz, type, k] of [[55, 'sawtooth', 0.5], [55.6, 'sawtooth', 0.5], [82.7, 'triangle', 0.25]]) {
+        const o = ctx.createOscillator(), og = ctx.createGain(); o.type = type; o.frequency.value = hz; og.gain.value = k; o.connect(og).connect(f); o.start();
+      }
+    }
+    if (this.droneG) this.droneG.gain.setTargetAtTime(on ? 0.09 : 0, ctx.currentTime, on ? 1.2 : 1.6);
+  }
+
   whoosh() {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime, s = ctx.createBufferSource(); s.buffer = this.noise;
@@ -235,7 +294,7 @@ export class Audio {
     const P = game.player, g = game.wind.gust(P.pos.x, P.pos.z), sp = Math.hypot(P.vel.x, P.vel.z);
     const t = this.ctx.currentTime;
     const menu = game.state !== 'play';
-    const lvl = (0.05 + g * 0.05 + sp * 0.012) * (menu ? 0.6 : 1);
+    const lvl = (0.05 + g * 0.05 + sp * 0.012) * (menu ? 0.6 : 1) * (1 - 0.8 * (this.hush || 0));      // hush: the forest holding its breath
     this.windGain.gain.setTargetAtTime(lvl, t, 0.3);
     this.windLP.frequency.setTargetAtTime(300 + g * 160 + sp * 60, t, 0.3);
     this.whistleGain.gain.setTargetAtTime(Math.max(0, g - 1.8) * 0.02, t, 0.5);

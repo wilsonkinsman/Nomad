@@ -89,7 +89,8 @@ export class Sky {
     this.lightDir = new THREE.Vector3(); // whichever body lights the scene
     this.lightColor = new THREE.Color();
     this.sunDiskColor = new THREE.Vector3();
-    this.fog = { haze: new THREE.Vector4(), mist: new THREE.Vector4(), scatter: 1, rays: 0 };
+    this.fog = { haze: new THREE.Vector4(), mist: new THREE.Vector4(), scatter: 1, rays: 0, gloom: 0 };
+    this.gloom = 0; this.gloomY = 0;     // a grey mist that rolls in round the shrine when its keeper wakes (0..1), lying at gloomY
     this.exposure = 1;
     this._lastLutDir = new THREE.Vector3(9, 9, 9);
     this._envTimer = 0;
@@ -266,6 +267,15 @@ export class Sky {
       this.fog.rays = lerp(1.0, 0.55, p);
       this.exposure = tn.exposure * lerp(1.0, 0.8, p);
     }
+    // the gloom: thick low mist, the sun dimmed and its glow through the air all but gone
+    const gl = this.gloom;
+    if (gl > 0.001) {
+      const f = this.fog;
+      f.mist.set(lerp(f.mist.x, 0.07, gl), lerp(f.mist.y, 0.17, gl), lerp(f.mist.z, this.gloomY, gl), 0);
+      f.haze.x *= 1 + 1.4 * gl; f.scatter *= 1 - 0.75 * gl; f.rays *= 1 - 0.85 * gl;
+      this.lightColor.multiplyScalar(1 - 0.5 * gl);
+    }
+    this.fog.gloom = gl;
 
     // re-render the LUT when the light moved enough
     if (force || this._lastLutDir.distanceTo(L) > 0.0015) {

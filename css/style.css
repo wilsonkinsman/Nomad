@@ -164,3 +164,14 @@ input[type=range] { accent-color: var(--gold); width: 150px; }
 #callout.earth { color: #d2d49a; text-shadow: 0 0 22px #6e6a2a, 0 2px 0 #000; }
 #storm-fill { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #6aa0ff, #e4efff); box-shadow: 0 0 8px #6aa0ff; }
 #hp.low #hp-fill { background: #d9604a; }
+/* the shrine's keeper: its name and a long bar under the compass; the pale part trails behind the red as it drains */
+#boss { position: absolute; left: 50%; top: 74px; width: min(620px, 72vw); transform: translateX(-50%); opacity: 0; transition: opacity 1.4s; }
+#boss.show { opacity: 1; }
+.boss-name { display: flex; align-items: baseline; gap: 14px; margin-bottom: 7px; font-family: var(--serif); font-size: 25px; font-weight: 500; letter-spacing: 0.24em; text-shadow: 0 2px 12px rgba(0,0,0,0.85); }
+.boss-name .jp { font-family: var(--jp); font-size: 14px; letter-spacing: 0.3em; color: var(--ink-dim); }
+.boss-bar { position: relative; height: 7px; background: rgba(0,0,0,0.5); border: 1px solid rgba(244,237,225,0.35); }
+.boss-bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; }
+#boss-lag { background: rgba(240, 214, 180, 0.75); transition: width 0.7s ease-in 0.45s; }
+#boss-fill { background: linear-gradient(90deg, #6e160f, #b02e1c); box-shadow: 0 0 8px rgba(176, 46, 28, 0.55); transition: width 0.12s; }
+#boss.enraged #boss-fill { background: linear-gradient(90deg, #8a1006, #e2421c); box-shadow: 0 0 12px rgba(226, 66, 28, 0.8); }
+.cmark.shrine { color: #d97a5a; }

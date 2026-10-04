@@ -18,10 +18,20 @@ export const ZONES = {
   snow:   { cx: -46, cz: 58,  rx: 46, rz: 40, rot: 0.4 },
 };
 
+// the abandoned shrine in the hollow: a raised clearing, level out to `terrace` metres from its middle, then
+// `slope` metres of bank down to the hollow; its front, `face` (a heading: sin, cos), looks down a flight of
+// stone steps to a side trail
+export const SHRINE = { x: -63, z: -47, face: 1.645, terrace: 13, slope: 4.5, lift: 1.6 };
+const shrineFront = (d) => [SHRINE.x + Math.sin(SHRINE.face) * d, SHRINE.z + Math.cos(SHRINE.face) * d];
+
+// a path may be narrower (`width`) or fainter (`wear`) than the roads
+const trail = (pts, width, wear) => Object.assign(smoothPath(pts, 10), { width, wear });
 export const PATHS = [
   smoothPath([[-160, 36], [-110, 27], [-66, 17], [-30, 11], [0, 5], [30, -1], [62, -2], [96, -10], [160, -20]], 10),
   smoothPath([[0, 5], [-7, -14], [-22, -33], [-38, -52], [-50, -78], [-58, -112]], 10),
   smoothPath([[-30, 11], [-34, 28], [-41, 46], [-49, 66], [-58, 92], [-66, 124]], 10),
+  // the old way to the shrine, half lost under the leaves
+  trail([[-34.2, -46.8], [-39.5, -47.4], shrineFront(SHRINE.terrace + SHRINE.slope + 0.5)], 0.6, 0.75),
 ];
 
 export const SPAWN = { x: -24, z: 10.5 };
@@ -38,7 +48,7 @@ function zoneWeight(z, x, zz, seed) {
   return 1 - smoothstep(0.82, 1.06, ellipseE(z, x, zz) + warp);
 }
 
-function rawHeight(x, z) {
+function naturalHeight(x, z) {
   let low = (fbm(x * 0.011 + 3.1, z * 0.011 - 7.7, 4) - 0.5) * 7.0;
   let h = low + (fbm(x * 0.045, z * 0.045, 3) - 0.5) * 1.1;
   // snow sits on a broad rise that keeps climbing toward the south-west
@@ -57,6 +67,19 @@ function rawHeight(x, z) {
   return { h: h + rimH, low: low + rimH };
 }
 
+let terraceY = null;
+function rawHeight(x, z) {
+  const r = naturalHeight(x, z);
+  // the shrine's clearing is levelled and raised a little above the hollow, and banks down on every side
+  const ds = Math.hypot(x - SHRINE.x, z - SHRINE.z), edge = SHRINE.terrace + SHRINE.slope;
+  if (ds < edge) {
+    if (terraceY === null) terraceY = naturalHeight(SHRINE.x, SHRINE.z).h + SHRINE.lift;
+    const k = smoothstep(edge, SHRINE.terrace, ds);
+    r.h = lerp(r.h, terraceY, k); r.low = lerp(r.low, terraceY, k);
+  }
+  return r;
+}
+
 // ------------------------------------------------------------------------------ baking
 
 export const H = new Float32Array(HRES * HRES);
@@ -68,6 +91,7 @@ function bakePathField() {
   pathField = new Float32Array(ZRES * ZRES);
   const texel = (HALF * 2) / ZRES;
   for (const pts of PATHS) {
+    const W = pts.width ?? 1, wear = pts.wear ?? 1;
     for (let i = 0; i < pts.length - 1; i++) {
       const [ax, az] = pts[i], [bx, bz] = pts[i + 1];
       const pad = 5;
@@ -79,8 +103,8 @@ function bakePathField() {
           const px = (tx + 0.5) * texel - HALF, pz = (tz + 0.5) * texel - HALF;
           const t = clamp(((px - ax) * dx + (pz - az) * dz) / L2, 0, 1);
           const d = Math.hypot(ax + dx * t - px, az + dz * t - pz);
-          const hw = 1.15 + (vnoise(px * 0.15, pz * 0.15) - 0.5) * 0.7;
-          const m = 1 - smoothstep(hw, hw + 1.3, d);
+          const hw = (1.15 + (vnoise(px * 0.15, pz * 0.15) - 0.5) * 0.7) * W;
+          const m = (1 - smoothstep(hw, hw + 1.3 * W, d)) * wear;
           const k = tz * ZRES + tx;
           if (m > pathField[k]) pathField[k] = m;
         }

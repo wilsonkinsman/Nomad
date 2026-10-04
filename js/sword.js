@@ -353,7 +353,7 @@ export class Weapon {
     // everything hurt in reach, hardest at the middle
     const charged = !!(G.storm && G.storm.charged), earthy = !!(G.earth && G.earth.active);
     for (const c of G.enemies?.targets || []) {
-      if (c.dead) continue;
+      if (c.dead || c.high) continue;
       const d = Math.hypot(c.x - px, c.z - pz);
       if (d < R + c.r) {
         c.onHit?.('slam', Math.round(lerp(48, 22, clamp(d / R, 0, 1)) * (charged ? CHARGED : 1)), c.x - px, c.z - pz, this.fx(charged, earthy));
@@ -689,7 +689,7 @@ export class Weapon {
     for (const L of list) {
       if (!L) continue;
       for (const c of L) {
-        if (c.dead) continue;
+        if (c.dead || c.high) continue;          // high: out of reach over his head (a giant's body)
         const dx = c.x - F.x, dz = c.z - F.z, d2 = dx * dx + dz * dz;
         if (d2 > 3.6 * 3.6) continue;
         if (this.struck.has(c)) continue;
